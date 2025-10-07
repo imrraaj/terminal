@@ -17,7 +17,7 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "terminal",
+		Title:  "HyperTerminal",
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{
@@ -25,6 +25,8 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
+		Fullscreen:       false,
 		Bind: []interface{}{
 			app,
 		},
