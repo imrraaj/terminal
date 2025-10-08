@@ -35,58 +35,6 @@ export namespace hyperliquid {
 
 export namespace main {
 	
-	export class AccountBalance {
-	    accountValue: string;
-	    totalRawUsd: string;
-	    withdrawable: string;
-	    totalMargin: string;
-	    accountLeverage: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new AccountBalance(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.accountValue = source["accountValue"];
-	        this.totalRawUsd = source["totalRawUsd"];
-	        this.withdrawable = source["withdrawable"];
-	        this.totalMargin = source["totalMargin"];
-	        this.accountLeverage = source["accountLeverage"];
-	    }
-	}
-	export class ActivePosition {
-	    coin: string;
-	    side: string;
-	    size: string;
-	    entryPrice: string;
-	    currentPrice: string;
-	    liquidationPx: string;
-	    unrealizedPnl: string;
-	    positionValue: string;
-	    leverage: number;
-	    marginUsed: string;
-	    returnOnEquity: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ActivePosition(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.coin = source["coin"];
-	        this.side = source["side"];
-	        this.size = source["size"];
-	        this.entryPrice = source["entryPrice"];
-	        this.currentPrice = source["currentPrice"];
-	        this.liquidationPx = source["liquidationPx"];
-	        this.unrealizedPnl = source["unrealizedPnl"];
-	        this.positionValue = source["positionValue"];
-	        this.leverage = source["leverage"];
-	        this.marginUsed = source["marginUsed"];
-	        this.returnOnEquity = source["returnOnEquity"];
-	    }
-	}
 	export class Signal {
 	    Index: number;
 	    Type: number;
@@ -209,20 +157,6 @@ export namespace main {
 		    return a;
 		}
 	}
-	export class ClosePositionRequest {
-	    coin: string;
-	    size: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new ClosePositionRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.coin = source["coin"];
-	        this.size = source["size"];
-	    }
-	}
 	export class Label {
 	    Index: number;
 	    Price: number;
@@ -242,82 +176,6 @@ export namespace main {
 	        this.Direction = source["Direction"];
 	        this.Percentage = source["Percentage"];
 	    }
-	}
-	export class OrderRequest {
-	    coin: string;
-	    isBuy: boolean;
-	    size: number;
-	    price: number;
-	    orderType: string;
-	    reduceOnly: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new OrderRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.coin = source["coin"];
-	        this.isBuy = source["isBuy"];
-	        this.size = source["size"];
-	        this.price = source["price"];
-	        this.orderType = source["orderType"];
-	        this.reduceOnly = source["reduceOnly"];
-	    }
-	}
-	export class OrderResponse {
-	    success: boolean;
-	    orderId: string;
-	    message: string;
-	    status: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new OrderResponse(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.success = source["success"];
-	        this.orderId = source["orderId"];
-	        this.message = source["message"];
-	        this.status = source["status"];
-	    }
-	}
-	export class PortfolioSummary {
-	    balance: AccountBalance;
-	    positions: ActivePosition[];
-	    totalPositions: number;
-	    totalPnL: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new PortfolioSummary(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.balance = this.convertValues(source["balance"], AccountBalance);
-	        this.positions = this.convertValues(source["positions"], ActivePosition);
-	        this.totalPositions = source["totalPositions"];
-	        this.totalPnL = source["totalPnL"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	
 	

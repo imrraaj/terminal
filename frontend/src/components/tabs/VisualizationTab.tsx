@@ -58,9 +58,10 @@ export function VisualizationTab() {
     const [strategyApplied, setStrategyApplied] = useState(false);
 
     const LIMIT = 7000;
+    const INITIAL_VIEWPORT = 1000;
 
     useEffect(() => {
-        strategyManager.loadData(symbol, timeframe, LIMIT);
+        strategyManager.loadData(symbol, timeframe, LIMIT, INITIAL_VIEWPORT);
     }, [symbol, timeframe]);
 
     const currentTimeframe =

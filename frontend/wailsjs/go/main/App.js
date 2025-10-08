@@ -6,14 +6,6 @@ export function ApplyStrategy(arg1, arg2) {
   return window['go']['main']['App']['ApplyStrategy'](arg1, arg2);
 }
 
-export function ClosePosition(arg1) {
-  return window['go']['main']['App']['ClosePosition'](arg1);
-}
-
-export function ConnectWallet(arg1) {
-  return window['go']['main']['App']['ConnectWallet'](arg1);
-}
-
 export function FetchAndApplyStrategy(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['FetchAndApplyStrategy'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -26,36 +18,20 @@ export function FetchCandlesBefore(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['FetchCandlesBefore'](arg1, arg2, arg3, arg4);
 }
 
-export function GetActivePositions() {
-  return window['go']['main']['App']['GetActivePositions']();
-}
-
-export function GetPortfolioSummary() {
-  return window['go']['main']['App']['GetPortfolioSummary']();
-}
-
 export function GetRunningStrategies() {
   return window['go']['main']['App']['GetRunningStrategies']();
 }
 
-export function GetWalletAddress() {
-  return window['go']['main']['App']['GetWalletAddress']();
+export function InvalidateCache() {
+  return window['go']['main']['App']['InvalidateCache']();
 }
 
-export function IsWalletConnected() {
-  return window['go']['main']['App']['IsWalletConnected']();
+export function InvalidateCacheForSymbol(arg1) {
+  return window['go']['main']['App']['InvalidateCacheForSymbol'](arg1);
 }
 
-export function OpenLongPosition(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['OpenLongPosition'](arg1, arg2, arg3, arg4);
-}
-
-export function OpenShortPosition(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['OpenShortPosition'](arg1, arg2, arg3, arg4);
-}
-
-export function OpenTrade(arg1) {
-  return window['go']['main']['App']['OpenTrade'](arg1);
+export function IsRedisConnected() {
+  return window['go']['main']['App']['IsRedisConnected']();
 }
 
 export function StartLiveStrategy(arg1, arg2, arg3, arg4, arg5) {

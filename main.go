@@ -27,7 +27,7 @@ func main() {
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
 		Fullscreen:       false,
-		Bind: []interface{}{
+		Bind: []any{
 			app,
 		},
 	})

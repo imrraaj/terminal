@@ -9,9 +9,10 @@ import {
     ISeriesApi,
     createSeriesMarkers,
 } from "lightweight-charts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useChartStore } from "../store/chartStore";
 import { hyperliquid } from "@/../wailsjs/go/models";
+import { TradingStrategyManager } from "@/lib/TradingStrategyManager";
 import {
     ContextMenu,
     ContextMenuContent,
@@ -24,15 +25,37 @@ interface TradingChartProps {
     intervalSeconds: number;
 }
 
-export function TradingChart({ intervalSeconds }: TradingChartProps) {
+export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
     const chartRef = useRef<HTMLDivElement>(null);
     const chartInstanceRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
     const trendLineSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
     const [clickedPrice, setClickedPrice] = useState<number | null>(null);
+    const prevCandlesLength = useRef(0);
+    const prevStrategyHash = useRef("");
+    const isLoadingMore = useRef(false);
+    const strategyManager = TradingStrategyManager.getInstance();
 
     const { chartData } = useChartStore();
-    const { candles, strategyOutput, symbol } = chartData;
+    const { candles, strategyOutput, symbol, loadedRange, totalAvailable } = chartData;
+
+    const LOAD_THRESHOLD = 100;
+
+    const formattedData = useMemo(() => {
+        if (!candles || candles.length === 0) return [];
+        return candles.map((c: hyperliquid.Candle) => ({
+            time: (c.t / 1000) as Time,
+            open: parseFloat(c.o),
+            high: parseFloat(c.h),
+            low: parseFloat(c.l),
+            close: parseFloat(c.c),
+        }));
+    }, [candles]);
+
+    const strategyHash = useMemo(() => {
+        if (!strategyOutput || !strategyOutput.Directions || !strategyOutput.TrendLines) return "";
+        return `${strategyOutput.Directions.length}-${strategyOutput.TrendLines.length}`;
+    }, [strategyOutput]);
 
     // Initialize chart once
     useEffect(() => {
@@ -137,160 +160,155 @@ export function TradingChart({ intervalSeconds }: TradingChartProps) {
         candleSeriesRef.current = candleSeries;
         window.addEventListener("resize", handleResize);
 
+        const handleVisibleRangeChange = () => {
+            if (!chartInstanceRef.current || !candleSeriesRef.current || isLoadingMore.current) return;
+
+            const visibleRange = chartInstanceRef.current.timeScale().getVisibleLogicalRange();
+            if (!visibleRange || !candles.length) return;
+
+            const visibleStart = Math.floor(visibleRange.from);
+            const visibleEnd = Math.ceil(visibleRange.to);
+
+            if (visibleStart < LOAD_THRESHOLD && loadedRange.start > 0) {
+                isLoadingMore.current = true;
+                console.log('Loading more candles on the left...');
+                strategyManager.loadMoreCandles('left', 500);
+                setTimeout(() => { isLoadingMore.current = false; }, 100);
+            }
+
+            if (candles.length - visibleEnd < LOAD_THRESHOLD && loadedRange.end < totalAvailable) {
+                isLoadingMore.current = true;
+                console.log('Loading more candles on the right...');
+                strategyManager.loadMoreCandles('right', 500);
+                setTimeout(() => { isLoadingMore.current = false; }, 100);
+            }
+        };
+
+        chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+
         return () => {
             window.removeEventListener("resize", handleResize);
             if (chartInstanceRef.current) {
+                chartInstanceRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
                 chartInstanceRef.current.remove();
                 chartInstanceRef.current = null;
                 candleSeriesRef.current = null;
                 trendLineSeriesRef.current = [];
             }
         };
-    }, []);
+    }, [candles.length, loadedRange, totalAvailable]);
 
-    // Update chart data when candles or strategy changes
+    // Update candlestick data
     useEffect(() => {
-        if (
-            !candleSeriesRef.current ||
-            !chartInstanceRef.current ||
-            !candles.length
-        )
-            return;
+        if (!candleSeriesRef.current || !chartInstanceRef.current || formattedData.length === 0) return;
 
-        const formattedData = candles.map((c: hyperliquid.Candle) => ({
-            time: (c.t / 1000) as Time,
-            open: parseFloat(c.o),
-            high: parseFloat(c.h),
-            low: parseFloat(c.l),
-            close: parseFloat(c.c),
-        }));
+        const isIncremental = prevCandlesLength.current > 0 &&
+            formattedData.length > prevCandlesLength.current &&
+            formattedData.length - prevCandlesLength.current <= 10;
 
-        // Set candlestick data
-        candleSeriesRef.current.setData(formattedData);
+        if (isIncremental) {
+            const newCandles = formattedData.slice(prevCandlesLength.current);
+            newCandles.forEach(candle => {
+                if (candleSeriesRef.current) {
+                    candleSeriesRef.current.update(candle);
+                }
+            });
+        } else {
+            candleSeriesRef.current.setData(formattedData);
+            chartInstanceRef.current.timeScale().fitContent();
+        }
 
-        // Remove old trend line series
+        prevCandlesLength.current = formattedData.length;
+    }, [formattedData]);
+
+    // Update trend lines only when strategy changes
+    useEffect(() => {
+        if (!chartInstanceRef.current || !strategyOutput) return;
+        if (!strategyOutput.Directions || !strategyOutput.TrendLines) return;
+        if (!candles || candles.length === 0) return;
+        if (strategyHash === prevStrategyHash.current) return;
+
         trendLineSeriesRef.current.forEach((series) => {
             chartInstanceRef.current?.removeSeries(series);
         });
         trendLineSeriesRef.current = [];
 
-        if (strategyOutput && strategyOutput.Directions.length > 0) {
-            // Create separate line series for each trend segment
-            let segmentStart = 0;
-            let currentDirection = strategyOutput.Directions[0];
+        if (strategyOutput.Directions.length === 0) {
+            prevStrategyHash.current = strategyHash;
+            return;
+        }
 
-            for (let i = 1; i <= strategyOutput.Directions.length; i++) {
-                if (
-                    i === strategyOutput.Directions.length ||
-                    strategyOutput.Directions[i] !== currentDirection
-                ) {
-                    const color =
-                        currentDirection === -1 ? "#1cc2d8" : "#e49013";
-                    const lineSeries = chartInstanceRef.current.addSeries(
-                        LineSeries,
-                        {
-                            color: color,
-                            lineWidth: 2,
-                            priceLineVisible: false,
-                            lastValueVisible: false,
-                        }
-                    );
+        let segmentStart = 0;
+        let currentDirection = strategyOutput.Directions[0];
+        const segments: Array<{
+            start: number;
+            end: number;
+            direction: number;
+        }> = [];
 
-                    const segmentData: LineData[] = [];
-                    let j;
-
-                    // Find max and min prices in the segment
-                    let maxPrice = -Infinity;
-                    let minPrice = Infinity;
-                    let maxIndex = segmentStart;
-                    let minIndex = segmentStart;
-
-                    for (j = segmentStart; j < i; j++) {
-                        if (strategyOutput.TrendLines[j] > 0) {
-                            segmentData.push({
-                                time: (candles[j].t / 1000) as Time,
-                                value: strategyOutput.TrendLines[j],
-                            });
-                        }
-
-                        const high = parseFloat(candles[j].h);
-                        const low = parseFloat(candles[j].l);
-
-                        if (high > maxPrice) {
-                            maxPrice = high;
-                            maxIndex = j;
-                        }
-                        if (low < minPrice) {
-                            minPrice = low;
-                            minIndex = j;
-                        }
-                    }
-
-                    // Calculate exit index (last candle in segment)
-                    const exitIndex = i - 1;
-
-                    // Build markers array
-                    const markers: any[] = [
-                        {
-                            time: (candles[segmentStart].t / 1000) as Time,
-                            position: "aboveBar",
-                            color:
-                                currentDirection === -1 ? "#1cc2d8" : "#e49013",
-                            shape:
-                                currentDirection === 1
-                                    ? "arrowDown"
-                                    : "arrowUp",
-                            text: `Entry: ${candles[segmentStart].c}`,
-                        },
-                        {
-                            time: segmentData[segmentData.length - 1]
-                                .time as Time,
-                            position: "aboveBar",
-                            color:
-                                currentDirection === -1 ? "#1cc2d8" : "#e49013",
-                            shape:
-                                currentDirection === 1
-                                    ? "arrowDown"
-                                    : "arrowUp",
-                            text: `Exit: ${candles[exitIndex].c}`,
-                        },
-                    ];
-
-                    // Add max/min price markers based on trend direction
-                    // if (currentDirection === -1) {
-                    //     // Uptrend - show max price reached
-                    //     markers.push({
-                    //         time: (candles[maxIndex].t / 1000) as Time,
-                    //         position: "aboveBar",
-                    //         color: "#00ff00",
-                    //         shape: "circle",
-                    //         text: `High: ${maxPrice.toFixed(2)}`,
-                    //     });
-                    // } else {
-                    //     // Downtrend - show min price reached
-                    //     markers.push({
-                    //         time: (candles[minIndex].t / 1000) as Time,
-                    //         position: "belowBar",
-                    //         color: "#ff0000",
-                    //         shape: "circle",
-                    //         text: `Low: ${minPrice.toFixed(2)}`,
-                    //     });
-                    // }
-
-                    createSeriesMarkers(lineSeries, markers);
-                    lineSeries.setData(segmentData);
-                    trendLineSeriesRef.current.push(lineSeries);
-
-                    if (i < strategyOutput.Directions.length) {
-                        segmentStart = i;
-                        currentDirection = strategyOutput.Directions[i];
-                    }
+        for (let i = 1; i <= strategyOutput.Directions.length; i++) {
+            if (i === strategyOutput.Directions.length || strategyOutput.Directions[i] !== currentDirection) {
+                segments.push({
+                    start: segmentStart,
+                    end: i,
+                    direction: currentDirection,
+                });
+                if (i < strategyOutput.Directions.length) {
+                    segmentStart = i;
+                    currentDirection = strategyOutput.Directions[i];
                 }
             }
         }
 
+        segments.forEach(({ start, end, direction }) => {
+            if (!chartInstanceRef.current) return;
+
+            const color = direction === -1 ? "#1cc2d8" : "#e49013";
+            const lineSeries = chartInstanceRef.current.addSeries(LineSeries, {
+                // color: color,
+                lineWidth: 2,
+                priceLineVisible: false,
+                lastValueVisible: false,
+            });
+
+            const segmentData: LineData[] = [];
+            for (let j = start; j < end; j++) {
+                if (strategyOutput.TrendLines[j] && strategyOutput.TrendLines[j] > 0) {
+                    segmentData.push({
+                        time: (candles[j].t / 1000) as Time,
+                        value: strategyOutput.TrendLines[j],
+                    });
+                }
+            }
+
+            if (segmentData.length > 0) {
+                const exitIndex = end - 1;
+                const markers: any[] = [
+                    {
+                        time: (candles[start].t / 1000) as Time,
+                        position: "aboveBar",
+                        color: direction === -1 ? "#1cc2d8" : "#e49013",
+                        shape: direction === 1 ? "arrowDown" : "arrowUp",
+                        text: `Entry: ${candles[start].c}`,
+                    },
+                    {
+                        time: segmentData[segmentData.length - 1].time as Time,
+                        position: "aboveBar",
+                        color: direction === -1 ? "#1cc2d8" : "#e49013",
+                        shape: direction === 1 ? "arrowDown" : "arrowUp",
+                        text: `Exit: ${candles[exitIndex].c}`,
+                    },
+                ];
+
+                createSeriesMarkers(lineSeries, markers);
+                lineSeries.setData(segmentData);
+                trendLineSeriesRef.current.push(lineSeries);
+            }
+        });
+
         chartInstanceRef.current.timeScale().fitContent();
-    }, [candles, strategyOutput]);
+        prevStrategyHash.current = strategyHash;
+    }, [strategyOutput, strategyHash, candles]);
 
     const handleChartClick = (e: React.MouseEvent) => {
         if (!chartInstanceRef.current || !candleSeriesRef.current) return;
@@ -334,4 +352,4 @@ export function TradingChart({ intervalSeconds }: TradingChartProps) {
             </ContextMenuContent>
         </ContextMenu>
     );
-}
+};

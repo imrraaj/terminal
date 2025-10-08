@@ -2,13 +2,14 @@ import { FetchCandles, StrategyRun, FetchAndApplyStrategy } from '../../wailsjs/
 import { main } from '../../wailsjs/go/models';
 import { useChartStore } from '../store/chartStore';
 
-// Import dynamically to handle binding generation
 const StartLiveStrategy = (window as any).go?.main?.App?.StartLiveStrategy;
 const StopLiveStrategy = (window as any).go?.main?.App?.StopLiveStrategy;
 const GetRunningStrategies = (window as any).go?.main?.App?.GetRunningStrategies;
 
 export class TradingStrategyManager {
     private static instance: TradingStrategyManager;
+    private pendingRequests: Map<string, AbortController> = new Map();
+    private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
 
     private constructor() {}
 
@@ -19,25 +20,71 @@ export class TradingStrategyManager {
         return TradingStrategyManager.instance;
     }
 
-    async loadData(symbol: string, interval: string, limit: number = 5000): Promise<void> {
-        const { setChartData, setLoading } = useChartStore.getState();
+    private cancelPendingRequest(key: string): void {
+        const controller = this.pendingRequests.get(key);
+        if (controller) {
+            controller.abort();
+            this.pendingRequests.delete(key);
+        }
+        const timer = this.debounceTimers.get(key);
+        if (timer) {
+            clearTimeout(timer);
+            this.debounceTimers.delete(key);
+        }
+    }
+
+    async loadData(symbol: string, interval: string, limit: number = 5000, initialViewport: number = 1000): Promise<void> {
+        const key = `load-${symbol}-${interval}-${limit}`;
+        this.cancelPendingRequest(key);
+
+        const { setChartData, setLoading, setAllCandles } = useChartStore.getState();
 
         try {
             setLoading(true);
-            const candles = await FetchCandles(symbol, interval, limit);
-            const strategyOutput = await StrategyRun(candles);
+            const allCandles = await FetchCandles(symbol, interval, limit);
+            const strategyOutput = await StrategyRun(allCandles);
 
+            const viewportCandles = allCandles.slice(-initialViewport);
+
+            setAllCandles(allCandles);
             setChartData({
-                candles,
+                candles: viewportCandles,
                 strategyOutput,
                 symbol,
                 interval,
+                loadedRange: { start: Math.max(0, allCandles.length - initialViewport), end: allCandles.length },
+                totalAvailable: allCandles.length,
             });
         } catch (error) {
             console.error('Failed to load data:', error);
             throw error;
         } finally {
             setLoading(false);
+        }
+    }
+
+    loadMoreCandles(direction: 'left' | 'right', amount: number = 500): void {
+        const { chartData, appendCandles, setChartData } = useChartStore.getState();
+        const { allCandles, loadedRange } = chartData;
+
+        if (direction === 'left') {
+            const newStart = Math.max(0, loadedRange.start - amount);
+            if (newStart < loadedRange.start) {
+                const newCandles = allCandles.slice(newStart, loadedRange.start);
+                appendCandles(newCandles, 'left');
+                setChartData({
+                    loadedRange: { start: newStart, end: loadedRange.end },
+                });
+            }
+        } else {
+            const newEnd = Math.min(allCandles.length, loadedRange.end + amount);
+            if (newEnd > loadedRange.end) {
+                const newCandles = allCandles.slice(loadedRange.end, newEnd);
+                appendCandles(newCandles, 'right');
+                setChartData({
+                    loadedRange: { start: loadedRange.start, end: newEnd },
+                });
+            }
         }
     }
 
@@ -48,6 +95,9 @@ export class TradingStrategyManager {
         strategyId: string,
         params: Record<string, any>
     ): Promise<main.StrategyOutputV2> {
+        const key = `apply-${symbol}-${interval}-${strategyId}`;
+        this.cancelPendingRequest(key);
+
         const { setLoading, updateStrategyOutput } = useChartStore.getState();
 
         try {
