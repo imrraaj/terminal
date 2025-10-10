@@ -1,17 +1,21 @@
 package main
+
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
+
 	"github.com/redis/go-redis/v9"
 	hyperliquid "github.com/sonirico/go-hyperliquid"
 )
+
 type CandleCache struct {
 	client    *redis.Client
 	connected bool
 	ctx       context.Context
 }
+
 func NewCandleCache(client *redis.Client, ctx context.Context) *CandleCache {
 	cache := &CandleCache{
 		client:    client,

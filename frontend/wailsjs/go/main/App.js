@@ -18,8 +18,20 @@ export function FetchCandlesBefore(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['FetchCandlesBefore'](arg1, arg2, arg3, arg4);
 }
 
+export function GetActivePositions() {
+  return window['go']['main']['App']['GetActivePositions']();
+}
+
+export function GetPortfolioSummary() {
+  return window['go']['main']['App']['GetPortfolioSummary']();
+}
+
 export function GetRunningStrategies() {
   return window['go']['main']['App']['GetRunningStrategies']();
+}
+
+export function GetWalletAddress() {
+  return window['go']['main']['App']['GetWalletAddress']();
 }
 
 export function InvalidateCache() {

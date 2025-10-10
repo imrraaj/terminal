@@ -5,7 +5,9 @@ import (
 
 	hyperliquid "github.com/sonirico/go-hyperliquid"
 )
+
 type SignalType int
+
 const (
 	SignalNone SignalType = iota
 	SignalLong
@@ -13,6 +15,7 @@ const (
 	SignalCloseLong
 	SignalCloseShort
 )
+
 type Signal struct {
 	Index      int
 	Type       SignalType
@@ -119,6 +122,7 @@ type StrategyRunner struct {
 	candles  hyperliquid.Candles
 	config   StrategyConfig
 }
+
 func NewStrategyRunner(strategy Strategy, candles hyperliquid.Candles, config StrategyConfig) *StrategyRunner {
 	return &StrategyRunner{
 		strategy: strategy,
@@ -316,12 +320,18 @@ func (sr *StrategyRunner) calculateBacktestMetrics(positions []Position) Backtes
 	var totalWin, totalLoss float64
 	var winStreak, lossStreak, currentWinStreak, currentLossStreak int
 	var totalHoldTime time.Duration
+	var totalCapitalInvested float64
 	for _, pos := range positions {
 		if pos.IsOpen {
 			continue
 		}
 		result.TotalTrades++
 		result.TotalPnL += pos.PnL
+
+		// Calculate capital invested (position size * entry price)
+		capitalInvested := pos.Size * pos.EntryPrice
+		totalCapitalInvested += capitalInvested
+
 		if pos.PnL > 0 {
 			result.WinningTrades++
 			totalWin += pos.PnL
@@ -348,6 +358,12 @@ func (sr *StrategyRunner) calculateBacktestMetrics(positions []Position) Backtes
 	if result.TotalTrades > 0 {
 		result.WinRate = (float64(result.WinningTrades) / float64(result.TotalTrades)) * 100
 		result.AverageHoldTime = totalHoldTime / time.Duration(result.TotalTrades)
+
+		// Calculate cumulative percentage gain based on average capital invested
+		avgCapitalInvested := totalCapitalInvested / float64(result.TotalTrades)
+		if avgCapitalInvested > 0 {
+			result.TotalPnLPercent = (result.TotalPnL / avgCapitalInvested) * 100
+		}
 	}
 	if result.WinningTrades > 0 {
 		result.AverageWin = totalWin / float64(result.WinningTrades)

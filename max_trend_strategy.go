@@ -6,19 +6,22 @@ import (
 
 	hyperliquid "github.com/sonirico/go-hyperliquid"
 )
+
 type MaxTrendPointsStrategy struct {
 	Factor  float64
 	candles hyperliquid.Candles
 	config  StrategyConfig
 	output  *StrategyOutput
 }
+
 var _ Strategy = (*MaxTrendPointsStrategy)(nil)
+
 func NewMaxTrendPointsStrategy(factor float64, colorUp, colorDn string) *MaxTrendPointsStrategy {
 	if factor <= 0 {
 		factor = 2.5
 	}
 	return &MaxTrendPointsStrategy{
-		Factor:  factor,
+		Factor: factor,
 	}
 }
 func (s *MaxTrendPointsStrategy) GetName() string {

@@ -17,28 +17,28 @@ type Strategy interface {
 
 // MaxTrendPointsStrategy implements trend-following strategy
 type MaxTrendPointsStrategy struct {
-	ctx       context.Context
-	exchange  *hyperliquid.Exchange
-	info      *hyperliquid.Info
-	coin      string
-	factor    float64
-	size      float64
-	slippage  float64
-	lastDir   int
+	ctx        context.Context
+	exchange   *hyperliquid.Exchange
+	info       *hyperliquid.Info
+	coin       string
+	factor     float64
+	size       float64
+	slippage   float64
+	lastDir    int
 	inPosition bool
 }
 
 // NewMaxTrendPointsStrategy creates a new strategy instance
 func NewMaxTrendPointsStrategy(ctx context.Context, exchange *hyperliquid.Exchange, info *hyperliquid.Info, coin string, size float64) *MaxTrendPointsStrategy {
 	return &MaxTrendPointsStrategy{
-		ctx:      ctx,
-		exchange: exchange,
-		info:     info,
-		coin:     coin,
-		factor:   8.0,
-		size:     size,
-		slippage: 0.05,
-		lastDir:  0,
+		ctx:        ctx,
+		exchange:   exchange,
+		info:       info,
+		coin:       coin,
+		factor:     8.0,
+		size:       size,
+		slippage:   0.05,
+		lastDir:    0,
 		inPosition: false,
 	}
 }

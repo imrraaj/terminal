@@ -11,7 +11,13 @@ export function FetchCandles(arg1:string,arg2:string,arg3:number):Promise<hyperl
 
 export function FetchCandlesBefore(arg1:string,arg2:string,arg3:number,arg4:number):Promise<hyperliquid.Candles>;
 
+export function GetActivePositions():Promise<Array<main.ActivePosition>>;
+
+export function GetPortfolioSummary():Promise<main.PortfolioSummary>;
+
 export function GetRunningStrategies():Promise<Array<main.StrategyInstance>>;
+
+export function GetWalletAddress():Promise<string>;
 
 export function InvalidateCache():Promise<void>;
 

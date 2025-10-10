@@ -478,6 +478,10 @@ export function VisualizationTab() {
                                         {chartData.strategyOutput.BacktestResult.TotalPnL.toFixed(
                                             2
                                         )}
+                                        <span className="text-sm ml-2">
+                                            ({chartData.strategyOutput.BacktestResult.TotalPnLPercent >= 0 ? '+' : ''}
+                                            {chartData.strategyOutput.BacktestResult.TotalPnLPercent.toFixed(2)}%)
+                                        </span>
                                     </p>
                                 </div>
                                 <div className="space-y-1">

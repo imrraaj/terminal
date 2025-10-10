@@ -30,11 +30,85 @@ export namespace hyperliquid {
 	        this.v = source["v"];
 	    }
 	}
+	export class OpenOrder {
+	    coin: string;
+	    limitPx: number;
+	    oid: number;
+	    side: string;
+	    sz: number;
+	    timestamp: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OpenOrder(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.coin = source["coin"];
+	        this.limitPx = source["limitPx"];
+	        this.oid = source["oid"];
+	        this.side = source["side"];
+	        this.sz = source["sz"];
+	        this.timestamp = source["timestamp"];
+	    }
+	}
 
 }
 
 export namespace main {
 	
+	export class AccountBalance {
+	    AccountValue: string;
+	    TotalRawUsd: string;
+	    Withdrawable: string;
+	    TotalMargin: string;
+	    AccountLeverage: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AccountBalance(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.AccountValue = source["AccountValue"];
+	        this.TotalRawUsd = source["TotalRawUsd"];
+	        this.Withdrawable = source["Withdrawable"];
+	        this.TotalMargin = source["TotalMargin"];
+	        this.AccountLeverage = source["AccountLeverage"];
+	    }
+	}
+	export class ActivePosition {
+	    Coin: string;
+	    Side: string;
+	    Size: string;
+	    EntryPrice: string;
+	    CurrentPrice: string;
+	    LiquidationPx: string;
+	    UnrealizedPnl: string;
+	    PositionValue: string;
+	    Leverage: number;
+	    MarginUsed: string;
+	    ReturnOnEquity: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ActivePosition(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Coin = source["Coin"];
+	        this.Side = source["Side"];
+	        this.Size = source["Size"];
+	        this.EntryPrice = source["EntryPrice"];
+	        this.CurrentPrice = source["CurrentPrice"];
+	        this.LiquidationPx = source["LiquidationPx"];
+	        this.UnrealizedPnl = source["UnrealizedPnl"];
+	        this.PositionValue = source["PositionValue"];
+	        this.Leverage = source["Leverage"];
+	        this.MarginUsed = source["MarginUsed"];
+	        this.ReturnOnEquity = source["ReturnOnEquity"];
+	    }
+	}
 	export class Signal {
 	    Index: number;
 	    Type: number;
@@ -177,6 +251,44 @@ export namespace main {
 	        this.Percentage = source["Percentage"];
 	    }
 	}
+	export class PortfolioSummary {
+	    Balance: AccountBalance;
+	    Positions: ActivePosition[];
+	    TotalPositions: number;
+	    TotalPnL: number;
+	    OpenOrders: hyperliquid.OpenOrder[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PortfolioSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Balance = this.convertValues(source["Balance"], AccountBalance);
+	        this.Positions = this.convertValues(source["Positions"], ActivePosition);
+	        this.TotalPositions = source["TotalPositions"];
+	        this.TotalPnL = source["TotalPnL"];
+	        this.OpenOrders = this.convertValues(source["OpenOrders"], hyperliquid.OpenOrder);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	
 	export class StrategyConfig {
@@ -205,29 +317,14 @@ export namespace main {
 	        this.Parameters = source["Parameters"];
 	    }
 	}
-	export class Account {
-	
-	
-	    static createFrom(source: any = {}) {
-	        return new Account(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	
-	    }
-	}
 	export class StrategyInstance {
-	    ID: string;
-	    Strategy: any;
-	    Config: StrategyConfig;
-	    Symbol: string;
-	    Interval: string;
-	    IsRunning: boolean;
-	    CurrentPosition?: Position;
-	    // Go type: Account
-	    Account?: any;
-	    LastCandleTime: number;
+	    id: string;
+	    config: StrategyConfig;
+	    symbol: string;
+	    interval: string;
+	    isRunning: boolean;
+	    currentPosition?: Position;
+	    lastCandleTime: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new StrategyInstance(source);
@@ -235,15 +332,13 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.ID = source["ID"];
-	        this.Strategy = source["Strategy"];
-	        this.Config = this.convertValues(source["Config"], StrategyConfig);
-	        this.Symbol = source["Symbol"];
-	        this.Interval = source["Interval"];
-	        this.IsRunning = source["IsRunning"];
-	        this.CurrentPosition = this.convertValues(source["CurrentPosition"], Position);
-	        this.Account = this.convertValues(source["Account"], null);
-	        this.LastCandleTime = source["LastCandleTime"];
+	        this.id = source["id"];
+	        this.config = this.convertValues(source["config"], StrategyConfig);
+	        this.symbol = source["symbol"];
+	        this.interval = source["interval"];
+	        this.isRunning = source["isRunning"];
+	        this.currentPosition = this.convertValues(source["currentPosition"], Position);
+	        this.lastCandleTime = source["lastCandleTime"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

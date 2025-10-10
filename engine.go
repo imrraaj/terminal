@@ -1,23 +1,26 @@
 package main
+
 import (
 	"context"
 	"fmt"
 	"sync"
 	"time"
+
 	hyperliquid "github.com/sonirico/go-hyperliquid"
 )
+
 type StrategyInstance struct {
-	ID              string
-	Strategy        Strategy
-	Config          StrategyConfig
-	Symbol          string
-	Interval        string
-	IsRunning       bool
-	CancelFunc      context.CancelFunc
-	CurrentPosition *Position
-	Account         *Account
-	LastCandleTime  int64
-	mu              sync.RWMutex
+	ID              string             `json:"id"`
+	Strategy        Strategy           `json:"-"`
+	Config          StrategyConfig     `json:"config"`
+	Symbol          string             `json:"symbol"`
+	Interval        string             `json:"interval"`
+	IsRunning       bool               `json:"isRunning"`
+	CancelFunc      context.CancelFunc `json:"-"`
+	CurrentPosition *Position          `json:"currentPosition"`
+	Account         *Account           `json:"-"`
+	LastCandleTime  int64              `json:"lastCandleTime"`
+	mu              sync.RWMutex       `json:"-"`
 }
 type StrategyEngine struct {
 	instances map[string]*StrategyInstance
@@ -25,6 +28,7 @@ type StrategyEngine struct {
 	account   *Account
 	mu        sync.RWMutex
 }
+
 func NewStrategyEngine(source *Source, account *Account) *StrategyEngine {
 	return &StrategyEngine{
 		instances: make(map[string]*StrategyInstance),
@@ -94,7 +98,7 @@ func (e *StrategyEngine) runStrategy(ctx context.Context, instance *StrategyInst
 		fmt.Printf("Error initializing strategy %s: %v\n", instance.ID, err)
 		return
 	}
-	ticker := time.NewTicker(intervalDuration / 5) 
+	ticker := time.NewTicker(intervalDuration / 5)
 	defer ticker.Stop()
 	for {
 		select {
@@ -118,7 +122,7 @@ func (e *StrategyEngine) checkAndProcessNewCandle(instance *StrategyInstance) er
 	}
 	latestCandle := candles[len(candles)-1]
 	if latestCandle.Timestamp <= instance.LastCandleTime {
-		return nil 
+		return nil
 	}
 	fmt.Printf("New candle for %s at %s: O=%s H=%s L=%s C=%s\n",
 		instance.Symbol,
@@ -191,9 +195,6 @@ func (e *StrategyEngine) processSignal(instance *StrategyInstance, signal Signal
 	return nil
 }
 func (e *StrategyEngine) openStrategyPosition(instance *StrategyInstance, side string, price float64) error {
-	if !instance.Account.IsConnected() {
-		return fmt.Errorf("account not connected")
-	}
 	var resp *OrderResponse
 	var err error
 	if side == "long" {
@@ -228,9 +229,6 @@ func (e *StrategyEngine) closeStrategyPosition(instance *StrategyInstance, reaso
 	if instance.CurrentPosition == nil || !instance.CurrentPosition.IsOpen {
 		return nil
 	}
-	if !instance.Account.IsConnected() {
-		return fmt.Errorf("account not connected")
-	}
 	resp, err := instance.Account.ClosePosition(ClosePositionRequest{
 		Coin: instance.Symbol,
 		Size: instance.CurrentPosition.Size,
@@ -264,7 +262,7 @@ func (e *StrategyEngine) checkTPSL(instance *StrategyInstance, candle hyperliqui
 				instance.Symbol, tpPrice, instance.CurrentPosition.EntryPrice)
 			return e.closeStrategyPosition(instance, "TP Hit")
 		}
-	} else { 
+	} else {
 		tpPrice = instance.CurrentPosition.EntryPrice * (1 - instance.Config.TakeProfitPercent/100)
 		slPrice = instance.CurrentPosition.EntryPrice * (1 + instance.Config.StopLossPercent/100)
 		if high >= slPrice && instance.Config.StopLossPercent > 0 {

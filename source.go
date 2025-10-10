@@ -1,21 +1,26 @@
 package main
+
 import (
 	"context"
 	"fmt"
 	"strconv"
 	"time"
+
 	hyperliquid "github.com/sonirico/go-hyperliquid"
 )
+
 func parseFloat(s string) float64 {
 	f, _ := strconv.ParseFloat(s, 64)
 	return f
 }
+
 type Source struct {
 	client *hyperliquid.Client
 	info   *hyperliquid.Info
 	ctx    context.Context
 	cache  *CandleCache
 }
+
 func NewSource() *Source {
 	info := hyperliquid.NewInfo(context.Background(), hyperliquid.MainnetAPIURL, true, nil, nil)
 	client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL)

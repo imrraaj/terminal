@@ -5,6 +5,7 @@ export interface ChartData {
     candles: hyperliquid.Candle[];
     allCandles: hyperliquid.Candle[];
     strategyOutput: main.StrategyOutputV2 | null;
+    fullStrategyOutput: main.StrategyOutputV2 | null;
     symbol: string;
     interval: string;
     isLoading: boolean;
@@ -26,6 +27,7 @@ export const useChartStore = create<ChartStore>((set) => ({
         candles: [],
         allCandles: [],
         strategyOutput: null,
+        fullStrategyOutput: null,
         symbol: 'BTC',
         interval: '15m',
         isLoading: false,

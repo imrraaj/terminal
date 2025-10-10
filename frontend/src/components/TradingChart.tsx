@@ -37,7 +37,8 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
     const strategyManager = TradingStrategyManager.getInstance();
 
     const { chartData } = useChartStore();
-    const { candles, strategyOutput, symbol, loadedRange, totalAvailable } = chartData;
+    const { candles, strategyOutput, symbol, loadedRange, totalAvailable } =
+        chartData;
 
     const LOAD_THRESHOLD = 100;
 
@@ -53,9 +54,78 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
     }, [candles]);
 
     const strategyHash = useMemo(() => {
-        if (!strategyOutput || !strategyOutput.Directions || !strategyOutput.TrendLines) return "";
-        return `${strategyOutput.Directions.length}-${strategyOutput.TrendLines.length}`;
+        if (
+            !strategyOutput ||
+            !strategyOutput.Directions ||
+            !strategyOutput.TrendLines
+        )
+            return "";
+        // Create hash from array lengths and first/last trend line values to detect changes
+        const firstTrendLine = strategyOutput.TrendLines[0] || 0;
+        const lastTrendLine =
+            strategyOutput.TrendLines[strategyOutput.TrendLines.length - 1] || 0;
+        const sumDirections = strategyOutput.Directions.reduce(
+            (sum, d) => sum + d,
+            0
+        );
+        return `${strategyOutput.Directions.length}-${strategyOutput.TrendLines.length
+            }-${firstTrendLine.toFixed(2)}-${lastTrendLine.toFixed(
+                2
+            )}-${sumDirections}`;
     }, [strategyOutput]);
+
+    // Memoize the visible range change handler to avoid stale closures
+    const handleVisibleRangeChange = useCallback(() => {
+        if (
+            !chartInstanceRef.current ||
+            !candleSeriesRef.current ||
+            isLoadingMore.current
+        )
+            return;
+
+        const visibleRange = chartInstanceRef.current
+            .timeScale()
+            .getVisibleLogicalRange();
+        if (!visibleRange || !candles.length) return;
+
+        const visibleStart = Math.floor(visibleRange.from);
+        const visibleEnd = Math.ceil(visibleRange.to);
+
+        if (visibleStart < LOAD_THRESHOLD && loadedRange.start > 0) {
+            isLoadingMore.current = true;
+            console.log("Loading more candles on the left...", {
+                visibleStart,
+                loadedStart: loadedRange.start,
+            });
+            strategyManager.loadMoreCandles("left", 500);
+            setTimeout(() => {
+                isLoadingMore.current = false;
+            }, 1000);
+        }
+
+        if (
+            candles.length - visibleEnd < LOAD_THRESHOLD &&
+            loadedRange.end < totalAvailable
+        ) {
+            isLoadingMore.current = true;
+            console.log("Loading more candles on the right...", {
+                visibleEnd,
+                candlesLength: candles.length,
+                loadedEnd: loadedRange.end,
+                totalAvailable,
+            });
+            strategyManager.loadMoreCandles("right", 500);
+            setTimeout(() => {
+                isLoadingMore.current = false;
+            }, 1000);
+        }
+    }, [
+        candles.length,
+        loadedRange.start,
+        loadedRange.end,
+        totalAvailable,
+        strategyManager,
+    ]);
 
     // Initialize chart once
     useEffect(() => {
@@ -72,7 +142,7 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
 
         const chart = createChart(chartRef.current, {
             layout: {
-                background: { type: ColorType.Solid, color: "#0f0f0f" },
+                background: { type: ColorType.Solid, color: "#181818" },
                 textColor: "white",
             },
             width: chartRef.current.clientWidth,
@@ -90,24 +160,13 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
                 tickMarkFormatter: (time: Time) => {
                     const date = new Date((time as number) * 1000);
                     if (intervalSeconds < 60 * 60) {
-                        const hours = date
-                            .getHours()
-                            .toString()
-                            .padStart(2, "0");
-                        const minutes = date
-                            .getMinutes()
-                            .toString()
-                            .padStart(2, "0");
+                        const hours = date.getHours().toString().padStart(2, "0");
+                        const minutes = date.getMinutes().toString().padStart(2, "0");
                         return `${hours}:${minutes}`;
                     } else if (intervalSeconds < 60 * 24) {
-                        const month = (date.getMonth() + 1)
-                            .toString()
-                            .padStart(2, "0");
+                        const month = (date.getMonth() + 1).toString().padStart(2, "0");
                         const day = date.getDate().toString().padStart(2, "0");
-                        const hours = date
-                            .getHours()
-                            .toString()
-                            .padStart(2, "0");
+                        const hours = date.getHours().toString().padStart(2, "0");
                         return `${month}/${day} ${hours}:00`;
                     } else {
                         const month = date.toLocaleDateString("en-US", {
@@ -160,55 +219,51 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
         candleSeriesRef.current = candleSeries;
         window.addEventListener("resize", handleResize);
 
-        const handleVisibleRangeChange = () => {
-            if (!chartInstanceRef.current || !candleSeriesRef.current || isLoadingMore.current) return;
-
-            const visibleRange = chartInstanceRef.current.timeScale().getVisibleLogicalRange();
-            if (!visibleRange || !candles.length) return;
-
-            const visibleStart = Math.floor(visibleRange.from);
-            const visibleEnd = Math.ceil(visibleRange.to);
-
-            if (visibleStart < LOAD_THRESHOLD && loadedRange.start > 0) {
-                isLoadingMore.current = true;
-                console.log('Loading more candles on the left...');
-                strategyManager.loadMoreCandles('left', 500);
-                setTimeout(() => { isLoadingMore.current = false; }, 100);
-            }
-
-            if (candles.length - visibleEnd < LOAD_THRESHOLD && loadedRange.end < totalAvailable) {
-                isLoadingMore.current = true;
-                console.log('Loading more candles on the right...');
-                strategyManager.loadMoreCandles('right', 500);
-                setTimeout(() => { isLoadingMore.current = false; }, 100);
-            }
-        };
-
-        chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-
         return () => {
             window.removeEventListener("resize", handleResize);
             if (chartInstanceRef.current) {
-                chartInstanceRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
                 chartInstanceRef.current.remove();
                 chartInstanceRef.current = null;
                 candleSeriesRef.current = null;
                 trendLineSeriesRef.current = [];
             }
         };
-    }, [candles.length, loadedRange, totalAvailable]);
+    }, [intervalSeconds, symbol]);
+
+    // Subscribe/unsubscribe to visible range changes
+    useEffect(() => {
+        if (!chartInstanceRef.current) return;
+
+        chartInstanceRef.current
+            .timeScale()
+            .subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+
+        return () => {
+            if (chartInstanceRef.current) {
+                chartInstanceRef.current
+                    .timeScale()
+                    .unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+            }
+        };
+    }, [handleVisibleRangeChange]);
 
     // Update candlestick data
     useEffect(() => {
-        if (!candleSeriesRef.current || !chartInstanceRef.current || formattedData.length === 0) return;
+        if (
+            !candleSeriesRef.current ||
+            !chartInstanceRef.current ||
+            formattedData.length === 0
+        )
+            return;
 
-        const isIncremental = prevCandlesLength.current > 0 &&
+        const isIncremental =
+            prevCandlesLength.current > 0 &&
             formattedData.length > prevCandlesLength.current &&
             formattedData.length - prevCandlesLength.current <= 10;
 
         if (isIncremental) {
             const newCandles = formattedData.slice(prevCandlesLength.current);
-            newCandles.forEach(candle => {
+            newCandles.forEach((candle) => {
                 if (candleSeriesRef.current) {
                     candleSeriesRef.current.update(candle);
                 }
@@ -238,6 +293,18 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
             return;
         }
 
+        // Verify arrays match in length
+        const maxLength = Math.min(
+            strategyOutput.Directions.length,
+            strategyOutput.TrendLines.length,
+            candles.length
+        );
+
+        if (maxLength === 0) {
+            prevStrategyHash.current = strategyHash;
+            return;
+        }
+
         let segmentStart = 0;
         let currentDirection = strategyOutput.Directions[0];
         const segments: Array<{
@@ -246,14 +313,17 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
             direction: number;
         }> = [];
 
-        for (let i = 1; i <= strategyOutput.Directions.length; i++) {
-            if (i === strategyOutput.Directions.length || strategyOutput.Directions[i] !== currentDirection) {
+        for (let i = 1; i <= maxLength; i++) {
+            if (
+                i === maxLength ||
+                strategyOutput.Directions[i] !== currentDirection
+            ) {
                 segments.push({
                     start: segmentStart,
                     end: i,
                     direction: currentDirection,
                 });
-                if (i < strategyOutput.Directions.length) {
+                if (i < maxLength) {
                     segmentStart = i;
                     currentDirection = strategyOutput.Directions[i];
                 }
@@ -265,7 +335,7 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
 
             const color = direction === -1 ? "#1cc2d8" : "#e49013";
             const lineSeries = chartInstanceRef.current.addSeries(LineSeries, {
-                // color: color,
+                color: color,
                 lineWidth: 2,
                 priceLineVisible: false,
                 lastValueVisible: false,
@@ -273,7 +343,19 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
 
             const segmentData: LineData[] = [];
             for (let j = start; j < end; j++) {
-                if (strategyOutput.TrendLines[j] && strategyOutput.TrendLines[j] > 0) {
+                // Guard against out of bounds access
+                if (j >= candles.length || j >= strategyOutput.TrendLines.length) {
+                    console.warn(
+                        `Index ${j} out of bounds: candles=${candles.length}, trendLines=${strategyOutput.TrendLines.length}`
+                    );
+                    break;
+                }
+
+                if (
+                    strategyOutput.TrendLines[j] &&
+                    strategyOutput.TrendLines[j] > 0 &&
+                    candles[j]
+                ) {
                     segmentData.push({
                         time: (candles[j].t / 1000) as Time,
                         value: strategyOutput.TrendLines[j],
@@ -283,24 +365,34 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
 
             if (segmentData.length > 0) {
                 const exitIndex = end - 1;
-                const markers: any[] = [
-                    {
-                        time: (candles[start].t / 1000) as Time,
-                        position: "aboveBar",
-                        color: direction === -1 ? "#1cc2d8" : "#e49013",
-                        shape: direction === 1 ? "arrowDown" : "arrowUp",
-                        text: `Entry: ${candles[start].c}`,
-                    },
-                    {
-                        time: segmentData[segmentData.length - 1].time as Time,
-                        position: "aboveBar",
-                        color: direction === -1 ? "#1cc2d8" : "#e49013",
-                        shape: direction === 1 ? "arrowDown" : "arrowUp",
-                        text: `Exit: ${candles[exitIndex].c}`,
-                    },
-                ];
 
-                createSeriesMarkers(lineSeries, markers);
+                // Ensure indices are valid before creating markers
+                if (
+                    start < candles.length &&
+                    exitIndex < candles.length &&
+                    candles[start] &&
+                    candles[exitIndex]
+                ) {
+                    const markers: any[] = [
+                        {
+                            time: (candles[start].t / 1000) as Time,
+                            position: "aboveBar",
+                            color: direction === -1 ? "#1cc2d8" : "#e49013",
+                            shape: direction === 1 ? "arrowDown" : "arrowUp",
+                            text: `Entry: ${candles[start].c}`,
+                        },
+                        {
+                            time: segmentData[segmentData.length - 1].time as Time,
+                            position: "aboveBar",
+                            color: direction === -1 ? "#1cc2d8" : "#e49013",
+                            shape: direction === 1 ? "arrowDown" : "arrowUp",
+                            text: `Exit: ${candles[exitIndex].c}`,
+                        },
+                    ];
+
+                    createSeriesMarkers(lineSeries, markers);
+                }
+
                 lineSeries.setData(segmentData);
                 trendLineSeriesRef.current.push(lineSeries);
             }
@@ -341,13 +433,10 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
                 />
             </ContextMenuTrigger>
             <ContextMenuContent className="w-48">
-                <ContextMenuItem onClick={resetChart}>
-                    Reset Chart
-                </ContextMenuItem>
+                <ContextMenuItem onClick={resetChart}>Reset Chart</ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={copyPrice} disabled={!clickedPrice}>
-                    Copy Price{" "}
-                    {clickedPrice ? `(${clickedPrice.toFixed(2)})` : ""}
+                    Copy Price {clickedPrice ? `(${clickedPrice.toFixed(2)})` : ""}
                 </ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>

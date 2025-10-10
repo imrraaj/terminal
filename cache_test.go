@@ -1,11 +1,14 @@
 package main
+
 import (
 	"context"
 	"testing"
 	"time"
+
 	"github.com/redis/go-redis/v9"
 	hyperliquid "github.com/sonirico/go-hyperliquid"
 )
+
 func TestCacheWithRedis(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
@@ -52,7 +55,7 @@ func TestCacheWithRedis(t *testing.T) {
 }
 func TestCacheWithoutRedis(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:9999", 
+		Addr: "localhost:9999",
 	})
 	defer client.Close()
 	ctx := context.Background()
@@ -95,8 +98,8 @@ func TestUpdateWithNewCandle(t *testing.T) {
 	}
 	cache.Set(symbol, interval, limit, initialCandles)
 	newCandles := []hyperliquid.Candle{
-		{Timestamp: 2000, Open: "105", High: "115", Low: "95", Close: "110", Volume: "1100"},  
-		{Timestamp: 3000, Open: "110", High: "120", Low: "100", Close: "115", Volume: "1200"}, 
+		{Timestamp: 2000, Open: "105", High: "115", Low: "95", Close: "110", Volume: "1100"},
+		{Timestamp: 3000, Open: "110", High: "120", Low: "100", Close: "115", Volume: "1200"},
 	}
 	err := cache.UpdateWithNewCandle(symbol, interval, limit, newCandles)
 	if err != nil {
