@@ -39,7 +39,7 @@ func main() {
 	ctx := context.Background()
 
 	// Load private key
-	privateKey, err := crypto.HexToECDSA("fcbd8c1e9300c87d420d2593100ca24e4b09a3d84fa6b1c7c600252a7f6d28be")
+	privateKey, err := crypto.HexToECDSA("")
 	if err != nil {
 		log.Fatalf("Failed to load private key: %v", err)
 	}

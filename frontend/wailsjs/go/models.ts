@@ -231,6 +231,20 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class Config {
+	    URL: string;
+	    PrivateKey: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.URL = source["URL"];
+	        this.PrivateKey = source["PrivateKey"];
+	    }
+	}
 	export class Label {
 	    Index: number;
 	    Price: number;
@@ -249,6 +263,24 @@ export namespace main {
 	        this.Text = source["Text"];
 	        this.Direction = source["Direction"];
 	        this.Percentage = source["Percentage"];
+	    }
+	}
+	export class OrderResponse {
+	    Success: boolean;
+	    OrderID: string;
+	    Message: string;
+	    Status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrderResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Success = source["Success"];
+	        this.OrderID = source["OrderID"];
+	        this.Message = source["Message"];
+	        this.Status = source["Status"];
 	    }
 	}
 	export class PortfolioSummary {

@@ -460,6 +460,37 @@ export function VisualizationTab() {
                     {strategyApplied &&
                     chartData.strategyOutput?.BacktestResult ? (
                         <>
+                            {/* Strategy Parameters */}
+                            <div className="bg-muted/50 rounded-lg p-4">
+                                <h3 className="font-semibold mb-3 text-sm">Strategy Parameters</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                    {selectedStrategy.parameters.map((param) => (
+                                        <div key={param.name} className="flex justify-between">
+                                            <span className="text-muted-foreground">{param.label}:</span>
+                                            <span className="font-medium">
+                                                {typeof strategyParams[param.name] === 'number'
+                                                    ? strategyParams[param.name].toFixed(param.inputType === 'number' ? 2 : 0)
+                                                    : strategyParams[param.name]}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Trade Direction:</span>
+                                        <span className="font-medium capitalize">{tradeDirection}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Take Profit:</span>
+                                        <span className="font-medium">{takeProfitPercent}%</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Stop Loss:</span>
+                                        <span className="font-medium">{stopLossPercent}%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Separator />
+
                             {/* Performance Metrics Grid */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div className="space-y-1">

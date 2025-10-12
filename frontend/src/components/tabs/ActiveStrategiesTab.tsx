@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, TrendingUp, TrendingDown } from "lucide-react";
 import { TradingStrategyManager } from "@/lib/TradingStrategyManager";
+import { SpotBuy, SpotSell } from "@/../wailsjs/go/main/App";
 
 interface ActiveStrategy {
     id: string;
@@ -141,6 +142,30 @@ export function ActiveStrategiesTab() {
         }
     };
 
+    const handleSpotBuy = async () => {
+        try {
+            console.log('Executing spot buy order...');
+            const result = await SpotBuy("BTC", 0.001);
+            console.log('Spot buy order executed:', result);
+            alert(`Spot buy order executed successfully: ${result.Message || 'Success'}`);
+        } catch (error) {
+            console.error('Failed to execute spot buy:', error);
+            alert(`Failed to execute spot buy: ${error}`);
+        }
+    };
+
+    const handleSpotSell = async () => {
+        try {
+            console.log('Executing spot sell order...');
+            const result = await SpotSell("BTC", 0.001);
+            console.log('Spot sell order executed:', result);
+            alert(`Spot sell order executed successfully: ${result.Message || 'Success'}`);
+        } catch (error) {
+            console.error('Failed to execute spot sell:', error);
+            alert(`Failed to execute spot sell: ${error}`);
+        }
+    };
+
     const filteredStrategies = strategies.filter(s => {
         if (filterStatus === 'all') return true;
         return s.status === filterStatus;
@@ -156,6 +181,12 @@ export function ActiveStrategiesTab() {
                     </p>
                 </div>
                 <div className="flex gap-3">
+                    <Button variant="default" size="sm" onClick={handleSpotBuy} className="bg-green-600 hover:bg-green-700">
+                        Spot Buy BTC (0.001)
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={handleSpotSell}>
+                        Spot Sell BTC (0.001)
+                    </Button>
                     <Select value={filterStatus} onValueChange={setFilterStatus}>
                         <SelectTrigger className="w-[140px]">
                             <SelectValue placeholder="Filter by status" />

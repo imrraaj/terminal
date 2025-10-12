@@ -3,30 +3,27 @@ package main
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	hyperliquid "github.com/sonirico/go-hyperliquid"
 )
 
 type StrategyInstance struct {
-	ID              string             `json:"id"`
-	Strategy        Strategy           `json:"-"`
-	Config          StrategyConfig     `json:"config"`
-	Symbol          string             `json:"symbol"`
-	Interval        string             `json:"interval"`
-	IsRunning       bool               `json:"isRunning"`
-	CancelFunc      context.CancelFunc `json:"-"`
-	CurrentPosition *Position          `json:"currentPosition"`
-	Account         *Account           `json:"-"`
-	LastCandleTime  int64              `json:"lastCandleTime"`
-	mu              sync.RWMutex       `json:"-"`
+	ID              string         `json:"id"`
+	Strategy        Strategy       `json:"-"`
+	Config          StrategyConfig `json:"config"`
+	Symbol          string         `json:"symbol"`
+	Interval        string         `json:"interval"`
+	IsRunning       bool           `json:"isRunning"`
+	CurrentPosition *Position      `json:"currentPosition"`
+	Account         *Account       `json:"-"`
+	LastCandleTime  int64          `json:"lastCandleTime"`
 }
+
 type StrategyEngine struct {
 	instances map[string]*StrategyInstance
 	source    *Source
 	account   *Account
-	mu        sync.RWMutex
 }
 
 func NewStrategyEngine(source *Source, account *Account) *StrategyEngine {
@@ -37,37 +34,29 @@ func NewStrategyEngine(source *Source, account *Account) *StrategyEngine {
 	}
 }
 func (e *StrategyEngine) StartStrategy(id string, strategy Strategy, config StrategyConfig, symbol string, interval string) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	if _, exists := e.instances[id]; exists {
 		return fmt.Errorf("strategy with id %s is already running", id)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 	instance := &StrategyInstance{
-		ID:         id,
-		Strategy:   strategy,
-		Config:     config,
-		Symbol:     symbol,
-		Interval:   interval,
-		IsRunning:  true,
-		CancelFunc: cancel,
-		Account:    e.account,
+		ID:        id,
+		Strategy:  strategy,
+		Config:    config,
+		Symbol:    symbol,
+		Interval:  interval,
+		IsRunning: true,
+		Account:   e.account,
 	}
 	e.instances[id] = instance
-	go e.runStrategy(ctx, instance)
 	return nil
 }
 func (e *StrategyEngine) StopStrategy(id string) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	instance, exists := e.instances[id]
 	if !exists {
 		return fmt.Errorf("strategy with id %s not found", id)
 	}
-	instance.CancelFunc()
 	instance.IsRunning = false
 	if instance.CurrentPosition != nil && instance.CurrentPosition.IsOpen {
-		if err := e.closeStrategyPosition(instance, "Strategy Stopped"); err != nil {
+		if err := e.closeStrategyPerpPosition(instance, "Strategy Stopped"); err != nil {
 			fmt.Printf("Error closing position for strategy %s: %v\n", id, err)
 		}
 	}
@@ -75,8 +64,6 @@ func (e *StrategyEngine) StopStrategy(id string) error {
 	return nil
 }
 func (e *StrategyEngine) GetRunningStrategies() []StrategyInstance {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
 	instances := make([]StrategyInstance, 0, len(e.instances))
 	for _, instance := range e.instances {
 		instances = append(instances, *instance)
@@ -156,8 +143,6 @@ func (e *StrategyEngine) checkAndProcessNewCandle(instance *StrategyInstance) er
 	return nil
 }
 func (e *StrategyEngine) processSignal(instance *StrategyInstance, signal Signal, candle hyperliquid.Candle) error {
-	instance.mu.Lock()
-	defer instance.mu.Unlock()
 	currentPrice := parseFloat(candle.Close)
 	if signal.Type == SignalLong || signal.Type == SignalShort {
 		side := "long"
@@ -173,13 +158,14 @@ func (e *StrategyEngine) processSignal(instance *StrategyInstance, signal Signal
 			return nil
 		}
 		if instance.CurrentPosition != nil && instance.CurrentPosition.IsOpen {
-			if err := e.closeStrategyPosition(instance, "New Signal"); err != nil {
+			if err := e.closeStrategyPerpPosition(instance, "New Signal"); err != nil {
 				return fmt.Errorf("failed to close existing position: %w", err)
 			}
 		}
 		fmt.Printf("Opening %s position for %s at price %.2f (signal: %s)\n",
 			side, instance.Symbol, currentPrice, signal.Reason)
-		if err := e.openStrategyPosition(instance, side, currentPrice); err != nil {
+		// TODO: factor out default 10x leverage
+		if err := e.openStrategyPerpPosition(instance, side, currentPrice, 10); err != nil {
 			return fmt.Errorf("failed to open position: %w", err)
 		}
 	}
@@ -187,29 +173,29 @@ func (e *StrategyEngine) processSignal(instance *StrategyInstance, signal Signal
 		if instance.CurrentPosition != nil && instance.CurrentPosition.IsOpen {
 			fmt.Printf("Closing position for %s at price %.2f (signal: %s)\n",
 				instance.Symbol, currentPrice, signal.Reason)
-			if err := e.closeStrategyPosition(instance, "Strategy Signal"); err != nil {
+			if err := e.closeStrategyPerpPosition(instance, "Strategy Signal"); err != nil {
 				return fmt.Errorf("failed to close position: %w", err)
 			}
 		}
 	}
 	return nil
 }
-func (e *StrategyEngine) openStrategyPosition(instance *StrategyInstance, side string, price float64) error {
+func (e *StrategyEngine) openStrategyPerpPosition(instance *StrategyInstance, side string, price float64, leverage int) error {
 	var resp *OrderResponse
 	var err error
 	if side == "long" {
-		resp, err = instance.Account.OpenLongPosition(
+		resp, err = instance.Account.OpenPerpOrder(
 			instance.Symbol,
+			true,
 			instance.Config.PositionSize,
-			price,
-			"market",
+			leverage,
 		)
 	} else {
-		resp, err = instance.Account.OpenShortPosition(
+		resp, err = instance.Account.OpenPerpOrder(
 			instance.Symbol,
+			false,
 			instance.Config.PositionSize,
-			price,
-			"market",
+			leverage,
 		)
 	}
 	if err != nil {
@@ -225,14 +211,11 @@ func (e *StrategyEngine) openStrategyPosition(instance *StrategyInstance, side s
 	fmt.Printf("Position opened successfully: %+v\n", resp)
 	return nil
 }
-func (e *StrategyEngine) closeStrategyPosition(instance *StrategyInstance, reason string) error {
+func (e *StrategyEngine) closeStrategyPerpPosition(instance *StrategyInstance, reason string) error {
 	if instance.CurrentPosition == nil || !instance.CurrentPosition.IsOpen {
 		return nil
 	}
-	resp, err := instance.Account.ClosePosition(ClosePositionRequest{
-		Coin: instance.Symbol,
-		Size: instance.CurrentPosition.Size,
-	})
+	resp, err := instance.Account.ClosePosition(instance.Symbol, instance.CurrentPosition.Size)
 	if err != nil {
 		return err
 	}
@@ -240,6 +223,56 @@ func (e *StrategyEngine) closeStrategyPosition(instance *StrategyInstance, reaso
 	instance.CurrentPosition.ExitReason = reason
 	instance.CurrentPosition.ExitTime = time.Now().UnixMilli()
 	fmt.Printf("Position closed successfully: %s - %+v\n", reason, resp)
+	return nil
+}
+
+func (e *StrategyEngine) openStrategySpotPosition(instance *StrategyInstance) error {
+	candles, err := e.source.FetchHistoricalCandles(instance.Symbol, "1m", 1)
+	if err != nil {
+		return fmt.Errorf("failed to fetch current price: %w", err)
+	}
+	price := 0.0
+	if len(candles) > 0 {
+		price = parseFloat(candles[len(candles)-1].Close)
+	}
+
+	resp, err := instance.Account.SpotOrder(
+		instance.Symbol,
+		true,
+		instance.Config.PositionSize,
+	)
+	if err != nil {
+		return err
+	}
+	side := "buy"
+	instance.CurrentPosition = &Position{
+		EntryPrice: price,
+		EntryTime:  time.Now().UnixMilli(),
+		Side:       side,
+		Size:       instance.Config.PositionSize,
+		IsOpen:     true,
+	}
+	fmt.Printf("Spot %s order executed successfully at price %.2f: %+v\n", side, price, resp)
+	return nil
+}
+
+func (e *StrategyEngine) closeStrategySpotPosition(instance *StrategyInstance, reason string) error {
+	if instance.CurrentPosition == nil || !instance.CurrentPosition.IsOpen {
+		return nil
+	}
+
+	resp, err := instance.Account.SpotOrder(
+		instance.Symbol,
+		false,
+		instance.CurrentPosition.Size,
+	)
+	if err != nil {
+		return err
+	}
+	instance.CurrentPosition.IsOpen = false
+	instance.CurrentPosition.ExitReason = reason
+	instance.CurrentPosition.ExitTime = time.Now().UnixMilli()
+	fmt.Printf("Spot position closed successfully: %s - %+v\n", reason, resp)
 	return nil
 }
 func (e *StrategyEngine) checkTPSL(instance *StrategyInstance, candle hyperliquid.Candle) error {
@@ -255,12 +288,12 @@ func (e *StrategyEngine) checkTPSL(instance *StrategyInstance, candle hyperliqui
 		if low <= slPrice && instance.Config.StopLossPercent > 0 {
 			fmt.Printf("Stop Loss hit for %s at %.2f (entry: %.2f)\n",
 				instance.Symbol, slPrice, instance.CurrentPosition.EntryPrice)
-			return e.closeStrategyPosition(instance, "SL Hit")
+			return e.closeStrategyPerpPosition(instance, "SL Hit")
 		}
 		if high >= tpPrice && instance.Config.TakeProfitPercent > 0 {
 			fmt.Printf("Take Profit hit for %s at %.2f (entry: %.2f)\n",
 				instance.Symbol, tpPrice, instance.CurrentPosition.EntryPrice)
-			return e.closeStrategyPosition(instance, "TP Hit")
+			return e.closeStrategyPerpPosition(instance, "TP Hit")
 		}
 	} else {
 		tpPrice = instance.CurrentPosition.EntryPrice * (1 - instance.Config.TakeProfitPercent/100)
@@ -268,12 +301,12 @@ func (e *StrategyEngine) checkTPSL(instance *StrategyInstance, candle hyperliqui
 		if high >= slPrice && instance.Config.StopLossPercent > 0 {
 			fmt.Printf("Stop Loss hit for %s at %.2f (entry: %.2f)\n",
 				instance.Symbol, slPrice, instance.CurrentPosition.EntryPrice)
-			return e.closeStrategyPosition(instance, "SL Hit")
+			return e.closeStrategyPerpPosition(instance, "SL Hit")
 		}
 		if low <= tpPrice && instance.Config.TakeProfitPercent > 0 {
 			fmt.Printf("Take Profit hit for %s at %.2f (entry: %.2f)\n",
 				instance.Symbol, tpPrice, instance.CurrentPosition.EntryPrice)
-			return e.closeStrategyPosition(instance, "TP Hit")
+			return e.closeStrategyPerpPosition(instance, "TP Hit")
 		}
 	}
 	return nil
@@ -297,8 +330,6 @@ func (e *StrategyEngine) getIntervalDuration(interval string) time.Duration {
 	}
 }
 func (e *StrategyEngine) StopAllStrategies() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	for id := range e.instances {
 		if err := e.StopStrategy(id); err != nil {
 			fmt.Printf("Error stopping strategy %s: %v\n", id, err)

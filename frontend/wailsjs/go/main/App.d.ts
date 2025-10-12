@@ -13,6 +13,8 @@ export function FetchCandlesBefore(arg1:string,arg2:string,arg3:number,arg4:numb
 
 export function GetActivePositions():Promise<Array<main.ActivePosition>>;
 
+export function GetConfig():Promise<main.Config>;
+
 export function GetPortfolioSummary():Promise<main.PortfolioSummary>;
 
 export function GetRunningStrategies():Promise<Array<main.StrategyInstance>>;
@@ -24,6 +26,12 @@ export function InvalidateCache():Promise<void>;
 export function InvalidateCacheForSymbol(arg1:string):Promise<void>;
 
 export function IsRedisConnected():Promise<boolean>;
+
+export function SetConfigURL(arg1:string):Promise<void>;
+
+export function SpotBuy(arg1:string,arg2:number):Promise<main.OrderResponse>;
+
+export function SpotSell(arg1:string,arg2:number):Promise<main.OrderResponse>;
 
 export function StartLiveStrategy(arg1:string,arg2:string,arg3:Record<string, any>,arg4:string,arg5:string):Promise<void>;
 

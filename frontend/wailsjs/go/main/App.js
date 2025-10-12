@@ -22,6 +22,10 @@ export function GetActivePositions() {
   return window['go']['main']['App']['GetActivePositions']();
 }
 
+export function GetConfig() {
+  return window['go']['main']['App']['GetConfig']();
+}
+
 export function GetPortfolioSummary() {
   return window['go']['main']['App']['GetPortfolioSummary']();
 }
@@ -44,6 +48,18 @@ export function InvalidateCacheForSymbol(arg1) {
 
 export function IsRedisConnected() {
   return window['go']['main']['App']['IsRedisConnected']();
+}
+
+export function SetConfigURL(arg1) {
+  return window['go']['main']['App']['SetConfigURL'](arg1);
+}
+
+export function SpotBuy(arg1, arg2) {
+  return window['go']['main']['App']['SpotBuy'](arg1, arg2);
+}
+
+export function SpotSell(arg1, arg2) {
+  return window['go']['main']['App']['SpotSell'](arg1, arg2);
 }
 
 export function StartLiveStrategy(arg1, arg2, arg3, arg4, arg5) {

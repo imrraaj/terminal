@@ -16,6 +16,7 @@ type App struct {
 	strategy Strategy
 	Account  *Account
 	engine   *StrategyEngine
+	config   *Config
 }
 
 func NewApp() *App {
@@ -25,19 +26,20 @@ func NewApp() *App {
 		rdb: redis.NewClient(&redis.Options{
 			Addr: "localhost:6379",
 		}),
+		config: NewConfig(),
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.cache = NewCandleCache(a.rdb, ctx)
 	a.source.SetContext(ctx)
+	a.cache = NewCandleCache(a.rdb, ctx)
 	a.source.SetCache(a.cache)
-	a.Account = NewAccount(ctx, "0x3362856AE6f2Fd66CB8d16Db6D1729deFE9c4693")
+	a.Account = NewAccount(ctx, a.config)
 	a.engine = NewStrategyEngine(a.source, a.Account)
 }
 
-func (a *App) shutdown(ctx context.Context) {
+func (a *App) shutdown() {
 	if a.engine != nil {
 		a.engine.StopAllStrategies()
 	}
@@ -187,6 +189,17 @@ func (a *App) GetWalletAddress() string {
 	return a.Account.address
 }
 
+func (a *App) GetConfig() *Config {
+	return a.config
+}
+
+func (a *App) SetConfigURL(url string) {
+	a.config.SetSourceURL(url)
+	// Reinitialize account with new URL
+	a.Account = NewAccount(a.ctx, a.config)
+	a.engine = NewStrategyEngine(a.source, a.Account)
+}
+
 func (a *App) GetPortfolioSummary() (*PortfolioSummary, error) {
 	return a.Account.GetPortfolioSummary()
 }
@@ -214,4 +227,28 @@ func (a *App) InvalidateCacheForSymbol(symbol string) error {
 		return nil
 	}
 	return a.cache.InvalidateSymbol(symbol)
+}
+
+func (a *App) SpotBuy(symbol string, size float64) (*OrderResponse, error) {
+	fmt.Printf("Executing spot buy order for %s with size %.4f\n", symbol, size)
+
+	resp, err := a.Account.SpotOrder(symbol, true, size)
+	if err != nil {
+		return nil, fmt.Errorf("error executing spot buy: %w", err)
+	}
+
+	fmt.Printf("Spot buy order executed successfully: %+v\n", resp)
+	return resp, nil
+}
+
+func (a *App) SpotSell(symbol string, size float64) (*OrderResponse, error) {
+	fmt.Printf("Executing spot sell order for %s with size %.4f\n", symbol, size)
+
+	resp, err := a.Account.SpotOrder(symbol, false, size)
+	if err != nil {
+		return nil, fmt.Errorf("error executing spot sell: %w", err)
+	}
+
+	fmt.Printf("Spot sell order executed successfully: %+v\n", resp)
+	return resp, nil
 }
