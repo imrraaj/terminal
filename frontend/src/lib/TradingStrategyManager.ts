@@ -1,4 +1,4 @@
-import { FetchCandles, StrategyRun, FetchAndApplyStrategy, StartLiveStrategy, StopLiveStrategy, GetRunningStrategies } from '@/../wailsjs/go/main/App';
+import { FetchCandles, StrategyBacktest, StrategyRun, StopLiveStrategy, GetRunningStrategies } from '@/../wailsjs/go/main/App';
 import { main } from '@/../wailsjs/go/models';
 import { useChartStore } from '@/store/chartStore';
 
@@ -39,20 +39,14 @@ export class TradingStrategyManager {
             setLoading(true);
             const allCandles = await FetchCandles(symbol, interval, limit);
 
-            // Run strategy on ALL candles to get complete output
-            const fullStrategyOutput = await StrategyRun(allCandles);
-
             const viewportCandles = allCandles.slice(-initialViewport);
             const viewportStart = Math.max(0, allCandles.length - initialViewport);
-
-            // Slice strategy output to match viewport
-            const viewportStrategyOutput = this.sliceStrategyOutput(fullStrategyOutput, viewportStart, allCandles.length);
 
             setAllCandles(allCandles);
             setChartData({
                 candles: viewportCandles,
-                strategyOutput: viewportStrategyOutput,
-                fullStrategyOutput: fullStrategyOutput,
+                strategyOutput: null,
+                fullStrategyOutput: null,
                 symbol,
                 interval,
                 loadedRange: { start: viewportStart, end: allCandles.length },
@@ -66,55 +60,34 @@ export class TradingStrategyManager {
         }
     }
 
-    private sliceStrategyOutput(output: main.StrategyOutputV2 | null, start: number, end: number): main.StrategyOutputV2 | null {
+    private sliceStrategyOutput(output: main.BacktestOutput | null, start: number, end: number): main.BacktestOutput | null {
         if (!output) return null;
 
-        // Create a new instance with sliced arrays to match viewport
-        return new main.StrategyOutputV2({
+        return new main.BacktestOutput({
             TrendLines: output.TrendLines?.slice(start, end) || [],
             TrendColors: output.TrendColors?.slice(start, end) || [],
             Directions: output.Directions?.slice(start, end) || [],
             Labels: output.Labels || [],
             Signals: output.Signals || [],
-            BacktestResult: output.BacktestResult,
+            Positions: output.Positions || [],
             StrategyName: output.StrategyName,
             StrategyVersion: output.StrategyVersion,
+            TotalPnL: output.TotalPnL,
+            TotalPnLPercent: output.TotalPnLPercent,
+            WinRate: output.WinRate,
+            TotalTrades: output.TotalTrades,
+            WinningTrades: output.WinningTrades,
+            LosingTrades: output.LosingTrades,
+            AverageWin: output.AverageWin,
+            AverageLoss: output.AverageLoss,
+            ProfitFactor: output.ProfitFactor,
+            MaxDrawdown: output.MaxDrawdown,
+            MaxDrawdownPercent: output.MaxDrawdownPercent,
+            SharpeRatio: output.SharpeRatio,
+            LongestWinStreak: output.LongestWinStreak,
+            LongestLossStreak: output.LongestLossStreak,
+            AverageHoldTime: output.AverageHoldTime,
         });
-    }
-
-    loadMoreCandles(direction: 'left' | 'right', amount: number = 500): void {
-        const { chartData, appendCandles, setChartData } = useChartStore.getState();
-        const { allCandles, loadedRange, fullStrategyOutput } = chartData;
-
-        if (direction === 'left') {
-            const newStart = Math.max(0, loadedRange.start - amount);
-            if (newStart < loadedRange.start) {
-                const newCandles = allCandles.slice(newStart, loadedRange.start);
-                appendCandles(newCandles, 'left');
-
-                // Re-slice strategy output to match new viewport
-                const newStrategyOutput = this.sliceStrategyOutput(fullStrategyOutput, newStart, loadedRange.end);
-
-                setChartData({
-                    loadedRange: { start: newStart, end: loadedRange.end },
-                    strategyOutput: newStrategyOutput,
-                });
-            }
-        } else {
-            const newEnd = Math.min(allCandles.length, loadedRange.end + amount);
-            if (newEnd > loadedRange.end) {
-                const newCandles = allCandles.slice(loadedRange.end, newEnd);
-                appendCandles(newCandles, 'right');
-
-                // Re-slice strategy output to match new viewport
-                const newStrategyOutput = this.sliceStrategyOutput(fullStrategyOutput, loadedRange.start, newEnd);
-
-                setChartData({
-                    loadedRange: { start: loadedRange.start, end: newEnd },
-                    strategyOutput: newStrategyOutput,
-                });
-            }
-        }
     }
 
     async applyStrategy(
@@ -123,7 +96,7 @@ export class TradingStrategyManager {
         limit: number,
         strategyId: string,
         params: Record<string, any>
-    ): Promise<main.StrategyOutputV2> {
+    ): Promise<main.BacktestOutput> {
         const key = `apply-${symbol}-${interval}-${strategyId}`;
         this.cancelPendingRequest(key);
 
@@ -132,16 +105,13 @@ export class TradingStrategyManager {
         try {
             setLoading(true);
 
-            // FetchAndApplyStrategy runs on ALL candles and returns full strategy output
-            const fullStrategyOutput = await FetchAndApplyStrategy(
+            const fullStrategyOutput = await StrategyBacktest(
                 symbol,
                 interval,
                 limit,
-                strategyId,
                 params
             );
 
-            // Slice strategy output to match current viewport
             const { loadedRange } = chartData;
             const viewportStrategyOutput = this.sliceStrategyOutput(
                 fullStrategyOutput,
@@ -149,7 +119,6 @@ export class TradingStrategyManager {
                 loadedRange.end
             );
 
-            // Update both full and viewport strategy outputs
             setChartData({
                 strategyOutput: viewportStrategyOutput,
                 fullStrategyOutput: fullStrategyOutput,
@@ -165,17 +134,15 @@ export class TradingStrategyManager {
     }
 
     async rerunStrategy(): Promise<void> {
-        const { chartData, updateStrategyOutput, setLoading } = useChartStore.getState();
+        const { chartData, setLoading } = useChartStore.getState();
 
-        if (!chartData.candles.length) {
-            console.warn('No candles loaded');
+        if (!chartData.candles.length || !chartData.symbol || !chartData.interval) {
+            console.warn('No candles loaded or missing symbol/interval');
             return;
         }
 
         try {
             setLoading(true);
-            const strategyOutput = await StrategyRun(chartData.candles);
-            updateStrategyOutput(strategyOutput);
         } catch (error) {
             console.error('Failed to rerun strategy:', error);
             throw error;
@@ -185,29 +152,19 @@ export class TradingStrategyManager {
     }
 
     async startLiveStrategy(
-        id: string,
-        strategyId: string,
-        params: Record<string, any>,
+        name: string,
         symbol: string,
-        interval: string
+        interval: string,
+        params: Record<string, any>
     ): Promise<void> {
-        if (!StartLiveStrategy) {
-            throw new Error('StartLiveStrategy function not available. Please restart the app.');
-        }
-        return StartLiveStrategy(id, strategyId, params, symbol, interval);
+        return StrategyRun(name, symbol, interval, params);
     }
 
     async stopLiveStrategy(id: string): Promise<void> {
-        if (!StopLiveStrategy) {
-            throw new Error('StopLiveStrategy function not available. Please restart the app.');
-        }
         return StopLiveStrategy(id);
     }
 
     async getRunningStrategies(): Promise<any[]> {
-        if (!GetRunningStrategies) {
-            throw new Error('GetRunningStrategies function not available. Please restart the app.');
-        }
         return GetRunningStrategies();
     }
 }

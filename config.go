@@ -1,32 +1,43 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"fmt"
 	"os"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sonirico/go-hyperliquid"
 )
 
 type Config struct {
-	URL        string //wether testnet or mainnet
-	PrivateKey string // private key to trade with
+	URL        string
+	PrivateKey *ecdsa.PrivateKey
+	Address    string
+	RedisURL   string
 }
 
-func NewConfig() *Config {
+func NewConfig() Config {
 	pk, err := os.ReadFile(".secret")
 	if err != nil {
-		panic(fmt.Errorf("No private key file found. Please put the privat key in .secret file"))
+		panic(fmt.Errorf("failed to read .secret file: %w", err))
 	}
-	return &Config{
+	privateKey, err := crypto.HexToECDSA(string(pk))
+	if err != nil {
+		panic(fmt.Errorf("invalid private key: %w", err))
+	}
+	publicKey := privateKey.Public()
+	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		panic(fmt.Errorf("failed to cast public key to ECDSA"))
+	}
+	return Config{
 		URL:        hyperliquid.TestnetAPIURL,
-		PrivateKey: string(pk),
+		PrivateKey: privateKey,
+		Address:    crypto.PubkeyToAddress(*publicKeyECDSA).Hex(),
+		RedisURL:   "localhost:6379",
 	}
 }
 
 func (c *Config) SetSourceURL(url string) {
 	c.URL = url
-}
-
-func (c *Config) SetPrivateKey(pk string) {
-	c.PrivateKey = pk
 }

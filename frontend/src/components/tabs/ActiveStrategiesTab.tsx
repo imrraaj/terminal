@@ -6,7 +6,6 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, TrendingUp, TrendingDown } from "lucide-react";
 import { TradingStrategyManager } from "@/lib/TradingStrategyManager";
-import { SpotBuy, SpotSell } from "@/../wailsjs/go/main/App";
 
 interface ActiveStrategy {
     id: string;
@@ -142,33 +141,11 @@ export function ActiveStrategiesTab() {
         }
     };
 
-    const handleSpotBuy = async () => {
-        try {
-            console.log('Executing spot buy order...');
-            const result = await SpotBuy("BTC", 0.001);
-            console.log('Spot buy order executed:', result);
-            alert(`Spot buy order executed successfully: ${result.Message || 'Success'}`);
-        } catch (error) {
-            console.error('Failed to execute spot buy:', error);
-            alert(`Failed to execute spot buy: ${error}`);
-        }
-    };
-
-    const handleSpotSell = async () => {
-        try {
-            console.log('Executing spot sell order...');
-            const result = await SpotSell("BTC", 0.001);
-            console.log('Spot sell order executed:', result);
-            alert(`Spot sell order executed successfully: ${result.Message || 'Success'}`);
-        } catch (error) {
-            console.error('Failed to execute spot sell:', error);
-            alert(`Failed to execute spot sell: ${error}`);
-        }
-    };
 
     const filteredStrategies = strategies.filter(s => {
         if (filterStatus === 'all') return true;
-        return s.status === filterStatus;
+        const status = s.IsRunning ? 'running' : 'paused';
+        return status === filterStatus;
     });
 
     return (
@@ -181,12 +158,6 @@ export function ActiveStrategiesTab() {
                     </p>
                 </div>
                 <div className="flex gap-3">
-                    <Button variant="default" size="sm" onClick={handleSpotBuy} className="bg-green-600 hover:bg-green-700">
-                        Spot Buy BTC (0.001)
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={handleSpotSell}>
-                        Spot Sell BTC (0.001)
-                    </Button>
                     <Select value={filterStatus} onValueChange={setFilterStatus}>
                         <SelectTrigger className="w-[140px]">
                             <SelectValue placeholder="Filter by status" />
@@ -215,93 +186,88 @@ export function ActiveStrategiesTab() {
                     <Card key={strategy.id}>
                         <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <CardTitle className="text-lg">{strategy.name}</CardTitle>
-                                    <Badge variant={strategy.status === 'running' ? 'default' : 'secondary'}>
-                                        {strategy.status}
-                                    </Badge>
-                                    <span className="text-sm text-muted-foreground">
-                                        {strategy.symbol}/USD · {strategy.timeframe} · Factor: {strategy.params.factor}
-                                    </span>
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex items-center gap-3">
+                                        <CardTitle className="text-lg">{strategy.Strategy?.name || strategy.ID}</CardTitle>
+                                        <Badge variant={strategy.IsRunning ? 'default' : 'secondary'}>
+                                            {strategy.IsRunning ? 'running' : 'stopped'}
+                                        </Badge>
+                                        <span className="text-sm text-muted-foreground">
+                                            {strategy.Symbol}/USD · {strategy.Interval}
+                                        </span>
+                                    </div>
+                                    {strategy.Config?.Parameters && (
+                                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                            {Object.entries(strategy.Config.Parameters).map(([key, value]) => (
+                                                <span key={key}>
+                                                    <span className="capitalize">{key}:</span>{' '}
+                                                    <span className="font-medium text-foreground">
+                                                        {typeof value === 'number' ? value.toFixed(2) : String(value)}
+                                                    </span>
+                                                </span>
+                                            ))}
+                                            <span>
+                                                TP: <span className="font-medium text-green-400">{strategy.Config.TakeProfitPercent}%</span>
+                                            </span>
+                                            <span>
+                                                SL: <span className="font-medium text-red-400">{strategy.Config.StopLossPercent}%</span>
+                                            </span>
+                                            <span>
+                                                Dir: <span className="font-medium text-foreground capitalize">{strategy.Config.TradeDirection || 'both'}</span>
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex gap-2">
-                                    {strategy.status === 'running' && strategy.positions.length === 0 && (
+                                    {strategy.IsRunning && !strategy.Position?.IsOpen && (
                                         <>
-                                            <Button variant="outline" size="sm" onClick={() => handlePauseStrategy(strategy.id)}>
-                                                Pause
-                                            </Button>
-                                            <Button variant="destructive" size="sm" onClick={() => handleStopStrategy(strategy.id)}>
+                                            <Button variant="destructive" size="sm" onClick={() => handleStopStrategy(strategy.ID)}>
                                                 Stop
                                             </Button>
                                         </>
                                     )}
-                                    <div className={`text-sm font-semibold ${strategy.realizedPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                        Realized: ${strategy.realizedPnL.toFixed(2)}
-                                    </div>
                                 </div>
                             </div>
                         </CardHeader>
                         <CardContent>
-                            {strategy.positions.length > 0 ? (
+                            {strategy.Position?.IsOpen ? (
                                 <div className="space-y-3">
-                                    {strategy.positions.map((position: any) => (
-                                        <div key={position.id} className="border rounded-lg p-4 space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <Badge variant={position.side === 'long' ? 'default' : 'destructive'} className="text-xs">
-                                                        {position.leverage}x {position.side.toUpperCase()}
-                                                    </Badge>
-                                                    <span className="font-semibold">{strategy.symbol}/USD</span>
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => handleClosePosition(strategy.id, position.id)}
-                                                >
-                                                    <X className="h-4 w-4" />
-                                                </Button>
+                                    <div className="border rounded-lg p-4 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <Badge variant={strategy.Position.Side === 'long' ? 'default' : 'destructive'} className="text-xs">
+                                                    {strategy.Position.Side.toUpperCase()}
+                                                </Badge>
+                                                <span className="font-semibold">{strategy.Symbol}/USD</span>
                                             </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleStopStrategy(strategy.ID)}
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </Button>
+                                        </div>
 
-                                            <div className="grid grid-cols-6 gap-4 text-sm">
-                                                <div>
-                                                    <p className="text-muted-foreground">Entry Price</p>
-                                                    <p className="font-medium">${position.entryPrice.toFixed(2)}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">Mark Price</p>
-                                                    <p className="font-medium">${position.currentPrice.toFixed(2)}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">Position</p>
-                                                    <p className="font-medium">{position.size} {strategy.symbol}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">Margin</p>
-                                                    <p className="font-medium">${position.margin.toFixed(2)}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">Liq. Price</p>
-                                                    <p className="font-medium text-red-400">${position.liquidationPrice.toFixed(2)}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground">Unrealized PnL</p>
-                                                    <div className="flex items-center gap-1">
-                                                        {position.unrealizedPnL >= 0 ? (
-                                                            <TrendingUp className="h-3 w-3 text-green-500" />
-                                                        ) : (
-                                                            <TrendingDown className="h-3 w-3 text-red-500" />
-                                                        )}
-                                                        <p className={`font-semibold ${position.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                            ${position.unrealizedPnL.toFixed(2)}
-                                                        </p>
-                                                        <span className={`text-xs ${position.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                            ({position.pnlPercentage >= 0 ? '+' : ''}{position.pnlPercentage.toFixed(2)}%)
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                        <div className="grid grid-cols-4 gap-4 text-sm">
+                                            <div>
+                                                <p className="text-muted-foreground">Entry Price</p>
+                                                <p className="font-medium">${strategy.Position.EntryPrice?.toFixed(2) || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground">Size</p>
+                                                <p className="font-medium">{strategy.Position.Size} {strategy.Symbol}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground">TP Target</p>
+                                                <p className="font-medium text-green-400">${(strategy.Position.EntryPrice * (1 + strategy.Config.TakeProfitPercent / 100)).toFixed(2)}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground">SL Target</p>
+                                                <p className="font-medium text-red-400">${(strategy.Position.EntryPrice * (1 - strategy.Config.StopLossPercent / 100)).toFixed(2)}</p>
                                             </div>
                                         </div>
-                                    ))}
+                                    </div>
                                 </div>
                             ) : (
                                 <p className="text-sm text-muted-foreground text-center py-4">No active positions</p>

@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	hyperliquid "github.com/sonirico/go-hyperliquid"
 )
 
@@ -15,58 +17,147 @@ func parseFloat(s string) float64 {
 }
 
 type Source struct {
-	client *hyperliquid.Client
-	info   *hyperliquid.Info
-	ctx    context.Context
-	cache  *CandleCache
+	info         *hyperliquid.Info
+	ctx          context.Context
+	redisClient  *redis.Client
+	cacheEnabled bool
 }
 
-func NewSource() *Source {
+func NewSource(config Config) *Source {
 	info := hyperliquid.NewInfo(context.Background(), hyperliquid.MainnetAPIURL, true, nil, nil)
-	client := hyperliquid.NewClient(hyperliquid.MainnetAPIURL)
-	return &Source{info: info, client: client}
+	return &Source{
+		info: info,
+		ctx:  context.Background(),
+	}
 }
+
 func (s *Source) SetContext(ctx context.Context) {
 	s.ctx = ctx
 }
-func (s *Source) SetCache(cache *CandleCache) {
-	s.cache = cache
+
+func (s *Source) SetRedis(client *redis.Client) {
+	s.redisClient = client
+	if client != nil {
+		ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
+		defer cancel()
+		if err := client.Ping(ctx).Err(); err == nil {
+			s.cacheEnabled = true
+		}
+	}
 }
+
+func (s *Source) buildCacheKey(symbol, interval string, limit int) string {
+	return fmt.Sprintf("candles:%s:%s:%d", symbol, interval, limit)
+}
+
+func (s *Source) getCacheTTL(interval string) time.Duration {
+	switch interval {
+	case "1m":
+		return 1 * time.Minute
+	case "5m":
+		return 5 * time.Minute
+	case "15m":
+		return 15 * time.Minute
+	case "1h":
+		return 1 * time.Hour
+	case "4h":
+		return 4 * time.Hour
+	case "1d":
+		return 24 * time.Hour
+	default:
+		return 5 * time.Minute
+	}
+}
+
+func (s *Source) getFromCache(symbol, interval string, limit int) ([]hyperliquid.Candle, bool) {
+	if !s.cacheEnabled {
+		return nil, false
+	}
+	key := s.buildCacheKey(symbol, interval, limit)
+	ctx, cancel := context.WithTimeout(s.ctx, 500*time.Millisecond)
+	defer cancel()
+	data, err := s.redisClient.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, false
+	}
+	var candles []hyperliquid.Candle
+	if err := json.Unmarshal(data, &candles); err != nil {
+		return nil, false
+	}
+	return candles, true
+}
+
+func (s *Source) setToCache(symbol, interval string, limit int, candles []hyperliquid.Candle) {
+	if !s.cacheEnabled || len(candles) == 0 {
+		return
+	}
+	key := s.buildCacheKey(symbol, interval, limit)
+	ttl := s.getCacheTTL(interval)
+	data, err := json.Marshal(candles)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 500*time.Millisecond)
+	defer cancel()
+	s.redisClient.Set(ctx, key, data, ttl)
+}
+
 func (s *Source) FetchHistoricalCandles(symbol string, interval string, limit int) ([]hyperliquid.Candle, error) {
-	return s.FetchCandlesBefore(symbol, interval, limit, 0)
+	if candles, found := s.getFromCache(symbol, interval, limit); found {
+		return candles, nil
+	}
+
+	candles, err := s.FetchCandlesBefore(symbol, interval, limit, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	go s.setToCache(symbol, interval, limit, candles)
+
+	return candles, nil
 }
+
 func (s *Source) FetchCandlesBefore(symbol string, interval string, limit int, beforeTimestamp int64) ([]hyperliquid.Candle, error) {
 	const maxCandlesPerRequest = 5000
 	if limit <= maxCandlesPerRequest {
 		return s.fetchSingleBatch(symbol, interval, limit, beforeTimestamp)
 	}
+
 	var allCandles []hyperliquid.Candle
 	remaining := limit
 	currentEndTime := beforeTimestamp
+
 	for remaining > 0 {
 		batchSize := remaining
 		if batchSize > maxCandlesPerRequest {
 			batchSize = maxCandlesPerRequest
 		}
+
 		batch, err := s.fetchSingleBatch(symbol, interval, batchSize, currentEndTime)
 		if err != nil {
 			return nil, err
 		}
+
 		if len(batch) == 0 {
 			break
 		}
+
 		allCandles = append(batch, allCandles...)
 		currentEndTime = batch[0].Timestamp
 		remaining -= len(batch)
+
 		if len(batch) < batchSize {
 			break
 		}
 	}
+
 	if len(allCandles) == 0 {
-		return nil, fmt.Errorf("Expected non-empty candles response")
+		return nil, fmt.Errorf("no candles returned")
 	}
+
 	return allCandles, nil
 }
+
 func (s *Source) fetchSingleBatch(symbol string, interval string, limit int, beforeTimestamp int64) ([]hyperliquid.Candle, error) {
 	var endTime time.Time
 	if beforeTimestamp > 0 {
@@ -74,31 +165,67 @@ func (s *Source) fetchSingleBatch(symbol string, interval string, limit int, bef
 	} else {
 		endTime = time.Now()
 	}
-	var intervalDuration time.Duration
-	switch interval {
-	case "1m":
-		intervalDuration = time.Minute
-	case "5m":
-		intervalDuration = 5 * time.Minute
-	case "15m":
-		intervalDuration = 15 * time.Minute
-	case "1h":
-		intervalDuration = time.Hour
-	case "4h":
-		intervalDuration = 4 * time.Hour
-	case "1d":
-		intervalDuration = 24 * time.Hour
-	default:
-		intervalDuration = 5 * time.Minute
-	}
+
+	intervalDuration := s.intervalDuration(interval)
 	startTime := endTime.Add(-time.Duration(limit) * intervalDuration)
-	Coin := symbol
-	Interval := interval
-	StartTime := startTime.Unix() * 1000
-	EndTime := endTime.Unix() * 1000
-	candles, err := s.info.CandlesSnapshot(context.TODO(), Coin, Interval, StartTime, EndTime)
+
+	candles, err := s.info.CandlesSnapshot(
+		context.TODO(),
+		symbol,
+		interval,
+		startTime.Unix()*1000,
+		endTime.Unix()*1000,
+	)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch candles: %w", err)
 	}
+
 	return candles, nil
+}
+
+func (s *Source) intervalDuration(interval string) time.Duration {
+	switch interval {
+	case "1m":
+		return time.Minute
+	case "5m":
+		return 5 * time.Minute
+	case "15m":
+		return 15 * time.Minute
+	case "1h":
+		return time.Hour
+	case "4h":
+		return 4 * time.Hour
+	case "1d":
+		return 24 * time.Hour
+	default:
+		return 5 * time.Minute
+	}
+}
+
+func (s *Source) InvalidateCache() error {
+	if !s.cacheEnabled {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
+	defer cancel()
+	iter := s.redisClient.Scan(ctx, 0, "candles:*", 0).Iterator()
+	for iter.Next(ctx) {
+		s.redisClient.Del(ctx, iter.Val())
+	}
+	return iter.Err()
+}
+
+func (s *Source) InvalidateCacheForSymbol(symbol string) error {
+	if !s.cacheEnabled {
+		return nil
+	}
+	pattern := fmt.Sprintf("candles:%s:*", symbol)
+	ctx, cancel := context.WithTimeout(s.ctx, 2*time.Second)
+	defer cancel()
+	iter := s.redisClient.Scan(ctx, 0, pattern, 0).Iterator()
+	for iter.Next(ctx) {
+		s.redisClient.Del(ctx, iter.Val())
+	}
+	return iter.Err()
 }

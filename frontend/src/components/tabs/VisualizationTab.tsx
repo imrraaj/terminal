@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { TradingChart } from "@/components/TradingChart";
 import { Label } from "@/components/ui/label";
 import {
@@ -27,41 +27,65 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { STRATEGIES, Strategy, StrategyParameter } from "@/types/strategy";
+import { STRATEGIES, StrategyParameter } from "@/types/strategy";
+import { main } from "@/../wailsjs/go/models";
 import { TradingStrategyManager } from "@/lib/TradingStrategyManager";
 import { useChartStore } from "@/store/chartStore";
+import { useVisualizationStore } from "@/store/visualizationStore";
 import { TIMEFRAMES, SYMBOLS } from "@/config/trading";
 
 const strategyManager = TradingStrategyManager.getInstance();
 
 export function VisualizationTab() {
-    const { chartData } = useChartStore();
-    const [symbol, setSymbol] = useState("BTC");
-    const [timeframe, setTimeframe] = useState("5m");
-    const [selectedStrategy, setSelectedStrategy] = useState<Strategy>(
-        STRATEGIES[0]
-    );
-    const [strategyParams, setStrategyParams] = useState<Record<string, any>>(
-        selectedStrategy.parameters.reduce(
-            (acc, param) => ({
-                ...acc,
-                [param.name]: param.defaultValue,
-            }),
-            {}
-        )
-    );
-    const [takeProfitPercent, setTakeProfitPercent] = useState(2.0);
-    const [stopLossPercent, setStopLossPercent] = useState(2.0);
-    const [tradeDirection, setTradeDirection] = useState<
-        "both" | "long" | "short"
-    >("long");
-    const [strategyApplied, setStrategyApplied] = useState(false);
+    const { chartData, updateStrategyOutput } = useChartStore();
+    const {
+        symbol,
+        timeframe,
+        selectedStrategy,
+        strategyParams,
+        takeProfitPercent,
+        stopLossPercent,
+        tradeDirection,
+        strategyApplied,
+        cachedStrategyOutput,
+        cacheKey,
+        showEntryPrices,
+        setSymbol,
+        setTimeframe,
+        setSelectedStrategy,
+        setStrategyParams,
+        setTakeProfitPercent,
+        setStopLossPercent,
+        setTradeDirection,
+        setStrategyApplied,
+        setCachedStrategyOutput,
+        setShowEntryPrices,
+    } = useVisualizationStore();
 
     const LIMIT = 7000;
     const INITIAL_VIEWPORT = 1000;
 
+    // Generate cache key from current config
+    const generateCacheKey = () => {
+        return JSON.stringify({
+            symbol,
+            timeframe,
+            strategyId: selectedStrategy.id,
+            params: strategyParams,
+            tp: takeProfitPercent,
+            sl: stopLossPercent,
+            dir: tradeDirection,
+        });
+    };
+
+    // Restore cached strategy output when tab mounts
     useEffect(() => {
         strategyManager.loadData(symbol, timeframe, LIMIT, INITIAL_VIEWPORT);
+
+        // Restore cached output if available and matches current config
+        if (cachedStrategyOutput && cacheKey === generateCacheKey()) {
+            updateStrategyOutput(cachedStrategyOutput);
+        }
     }, [symbol, timeframe]);
 
     const currentTimeframe =
@@ -71,16 +95,6 @@ export function VisualizationTab() {
         const strategy = STRATEGIES.find((s) => s.id === strategyId);
         if (strategy) {
             setSelectedStrategy(strategy);
-            setStrategyParams(
-                strategy.parameters.reduce(
-                    (acc, param) => ({
-                        ...acc,
-                        [param.name]: param.defaultValue,
-                    }),
-                    {}
-                )
-            );
-            setStrategyApplied(false);
         }
     };
 
@@ -102,6 +116,11 @@ export function VisualizationTab() {
             );
 
             setStrategyApplied(true);
+
+            // Cache the strategy output
+            if (chartData.strategyOutput) {
+                setCachedStrategyOutput(chartData.strategyOutput, generateCacheKey());
+            }
         } catch (error) {
             console.error("Failed to apply strategy:", error);
         }
@@ -125,10 +144,9 @@ export function VisualizationTab() {
 
             await strategyManager.startLiveStrategy(
                 strategyId,
-                selectedStrategy.id,
-                params,
                 symbol,
-                timeframe
+                timeframe,
+                params
             );
 
             alert(`Strategy ${selectedStrategy.name} started successfully!`);
@@ -282,6 +300,19 @@ export function VisualizationTab() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="showEntryPrices"
+                                        checked={showEntryPrices}
+                                        onChange={(e) => setShowEntryPrices(e.target.checked)}
+                                        className="w-4 h-4 cursor-pointer"
+                                    />
+                                    <label htmlFor="showEntryPrices" className="text-sm cursor-pointer">
+                                        Show Entry Prices
+                                    </label>
+                                </div>
 
                                 <Badge variant="secondary">Backtest Mode</Badge>
                             </div>
@@ -446,11 +477,11 @@ export function VisualizationTab() {
                     <CardTitle className="text-lg">Backtest Results</CardTitle>
                     <CardDescription>
                         {strategyApplied &&
-                        chartData.strategyOutput?.BacktestResult
+                        chartData.strategyOutput
                             ? `${chartData.strategyOutput.StrategyName} v${
                                   chartData.strategyOutput.StrategyVersion
                               } - ${
-                                  chartData.strategyOutput.BacktestResult
+                                  chartData.strategyOutput
                                       .Positions?.length || 0
                               } trades executed`
                             : "No backtest results - apply a strategy to see results"}
@@ -458,7 +489,7 @@ export function VisualizationTab() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                     {strategyApplied &&
-                    chartData.strategyOutput?.BacktestResult ? (
+                    chartData.strategyOutput ? (
                         <>
                             {/* Strategy Parameters */}
                             <div className="bg-muted/50 rounded-lg p-4">
@@ -500,18 +531,18 @@ export function VisualizationTab() {
                                     <p
                                         className={`text-2xl font-bold ${
                                             chartData.strategyOutput
-                                                .BacktestResult.TotalPnL >= 0
+                                                .TotalPnL >= 0
                                                 ? "text-green-500"
                                                 : "text-red-500"
                                         }`}
                                     >
                                         $
-                                        {chartData.strategyOutput.BacktestResult.TotalPnL.toFixed(
+                                        {chartData.strategyOutput.TotalPnL.toFixed(
                                             2
                                         )}
                                         <span className="text-sm ml-2">
-                                            ({chartData.strategyOutput.BacktestResult.TotalPnLPercent >= 0 ? '+' : ''}
-                                            {chartData.strategyOutput.BacktestResult.TotalPnLPercent.toFixed(2)}%)
+                                            ({chartData.strategyOutput.TotalPnLPercent >= 0 ? '+' : ''}
+                                            {chartData.strategyOutput.TotalPnLPercent.toFixed(2)}%)
                                         </span>
                                     </p>
                                 </div>
@@ -520,7 +551,7 @@ export function VisualizationTab() {
                                         Win Rate
                                     </p>
                                     <p className="text-2xl font-bold">
-                                        {chartData.strategyOutput.BacktestResult.WinRate.toFixed(
+                                        {chartData.strategyOutput.WinRate.toFixed(
                                             1
                                         )}
                                         %
@@ -533,13 +564,13 @@ export function VisualizationTab() {
                                     <p
                                         className={`text-2xl font-bold ${
                                             chartData.strategyOutput
-                                                .BacktestResult.ProfitFactor >=
+                                                .ProfitFactor >=
                                             1
                                                 ? "text-green-500"
                                                 : "text-red-500"
                                         }`}
                                     >
-                                        {chartData.strategyOutput.BacktestResult.ProfitFactor.toFixed(
+                                        {chartData.strategyOutput.ProfitFactor.toFixed(
                                             2
                                         )}
                                     </p>
@@ -551,7 +582,7 @@ export function VisualizationTab() {
                                     <p className="text-2xl font-bold">
                                         {
                                             chartData.strategyOutput
-                                                .BacktestResult.TotalTrades
+                                                .TotalTrades
                                         }
                                     </p>
                                 </div>
@@ -568,7 +599,7 @@ export function VisualizationTab() {
                                     <span className="font-medium text-green-500">
                                         {
                                             chartData.strategyOutput
-                                                .BacktestResult.WinningTrades
+                                                .WinningTrades
                                         }
                                     </span>
                                 </div>
@@ -579,7 +610,7 @@ export function VisualizationTab() {
                                     <span className="font-medium text-red-500">
                                         {
                                             chartData.strategyOutput
-                                                .BacktestResult.LosingTrades
+                                                .LosingTrades
                                         }
                                     </span>
                                 </div>
@@ -589,7 +620,7 @@ export function VisualizationTab() {
                                     </span>
                                     <span className="font-medium text-green-500">
                                         $
-                                        {chartData.strategyOutput.BacktestResult.AverageWin.toFixed(
+                                        {chartData.strategyOutput.AverageWin.toFixed(
                                             2
                                         )}
                                     </span>
@@ -602,7 +633,7 @@ export function VisualizationTab() {
                                         $
                                         {Math.abs(
                                             chartData.strategyOutput
-                                                .BacktestResult.AverageLoss
+                                                .AverageLoss
                                         ).toFixed(2)}
                                     </span>
                                 </div>
@@ -612,7 +643,7 @@ export function VisualizationTab() {
                                     </span>
                                     <span className="font-medium text-red-500">
                                         $
-                                        {chartData.strategyOutput.BacktestResult.MaxDrawdown.toFixed(
+                                        {chartData.strategyOutput.MaxDrawdown.toFixed(
                                             2
                                         )}
                                     </span>
@@ -622,7 +653,7 @@ export function VisualizationTab() {
                                         Sharpe Ratio
                                     </span>
                                     <span className="font-medium">
-                                        {chartData.strategyOutput.BacktestResult.SharpeRatio.toFixed(
+                                        {chartData.strategyOutput.SharpeRatio.toFixed(
                                             2
                                         )}
                                     </span>
@@ -634,7 +665,7 @@ export function VisualizationTab() {
                                     <span className="font-medium text-green-500">
                                         {
                                             chartData.strategyOutput
-                                                .BacktestResult.LongestWinStreak
+                                                .LongestWinStreak
                                         }
                                     </span>
                                 </div>
@@ -645,7 +676,6 @@ export function VisualizationTab() {
                                     <span className="font-medium text-red-500">
                                         {
                                             chartData.strategyOutput
-                                                .BacktestResult
                                                 .LongestLossStreak
                                         }
                                     </span>
@@ -655,9 +685,8 @@ export function VisualizationTab() {
                             <Separator />
 
                             {/* Trades Table */}
-                            {chartData.strategyOutput.BacktestResult
-                                .Positions &&
-                            chartData.strategyOutput.BacktestResult.Positions
+                            {chartData.strategyOutput.Positions &&
+                            chartData.strategyOutput.Positions
                                 .length > 0 ? (
                                 <div>
                                     <h3 className="font-semibold mb-3">
@@ -692,8 +721,8 @@ export function VisualizationTab() {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {chartData.strategyOutput.BacktestResult.Positions.map(
-                                                    (position, index) => (
+                                                {chartData.strategyOutput.Positions.map(
+                                                    (position: main.Position, index: number) => (
                                                         <TableRow
                                                             key={index}
                                                             className={

@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/ethereum/go-ethereum v1.16.4
 	github.com/redis/go-redis/v9 v9.14.0
-	github.com/sonirico/go-hyperliquid v0.15.3
+	github.com/sonirico/go-hyperliquid v0.16.0
 	github.com/wailsapp/wails/v2 v2.10.2
 )
 
@@ -59,11 +59,11 @@ require (
 	go.elastic.co/apm/module/apmzerolog/v2 v2.7.1 // indirect
 	go.elastic.co/apm/v2 v2.7.1 // indirect
 	go.elastic.co/fastjson v1.5.1 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/crypto v0.43.0 // indirect
+	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0 // indirect
 	howett.net/plist v1.0.1 // indirect
 )
 
