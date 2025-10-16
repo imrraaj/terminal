@@ -109,28 +109,6 @@ export namespace main {
 	        this.ReturnOnEquity = source["ReturnOnEquity"];
 	    }
 	}
-	export class Signal {
-	    Index: number;
-	    Type: number;
-	    Price: number;
-	    Time: number;
-	    Confidence: number;
-	    Reason: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Signal(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Index = source["Index"];
-	        this.Type = source["Type"];
-	        this.Price = source["Price"];
-	        this.Time = source["Time"];
-	        this.Confidence = source["Confidence"];
-	        this.Reason = source["Reason"];
-	    }
-	}
 	export class Position {
 	    EntryIndex: number;
 	    EntryPrice: number;
@@ -169,9 +147,55 @@ export namespace main {
 	        this.MaxProfit = source["MaxProfit"];
 	    }
 	}
-	export class BacktestResult {
-	    Positions: Position[];
+	export class Signal {
+	    Index: number;
+	    Type: number;
+	    Price: number;
+	    Time: number;
+	    Reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Signal(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Index = source["Index"];
+	        this.Type = source["Type"];
+	        this.Price = source["Price"];
+	        this.Time = source["Time"];
+	        this.Reason = source["Reason"];
+	    }
+	}
+	export class Label {
+	    Index: number;
+	    Price: number;
+	    Text: string;
+	    Direction: number;
+	    Percentage: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Label(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Index = source["Index"];
+	        this.Price = source["Price"];
+	        this.Text = source["Text"];
+	        this.Direction = source["Direction"];
+	        this.Percentage = source["Percentage"];
+	    }
+	}
+	export class BacktestOutput {
+	    TrendLines: number[];
+	    TrendColors: string[];
+	    Directions: number[];
+	    Labels: Label[];
 	    Signals: Signal[];
+	    Positions: Position[];
+	    StrategyName: string;
+	    StrategyVersion: string;
 	    TotalPnL: number;
 	    TotalPnLPercent: number;
 	    WinRate: number;
@@ -189,13 +213,19 @@ export namespace main {
 	    AverageHoldTime: number;
 	
 	    static createFrom(source: any = {}) {
-	        return new BacktestResult(source);
+	        return new BacktestOutput(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Positions = this.convertValues(source["Positions"], Position);
+	        this.TrendLines = source["TrendLines"];
+	        this.TrendColors = source["TrendColors"];
+	        this.Directions = source["Directions"];
+	        this.Labels = this.convertValues(source["Labels"], Label);
 	        this.Signals = this.convertValues(source["Signals"], Signal);
+	        this.Positions = this.convertValues(source["Positions"], Position);
+	        this.StrategyName = source["StrategyName"];
+	        this.StrategyVersion = source["StrategyVersion"];
 	        this.TotalPnL = source["TotalPnL"];
 	        this.TotalPnLPercent = source["TotalPnLPercent"];
 	        this.WinRate = source["WinRate"];
@@ -231,25 +261,72 @@ export namespace main {
 		    return a;
 		}
 	}
-	export class Label {
-	    Index: number;
-	    Price: number;
-	    Text: string;
-	    Direction: number;
-	    Percentage: number;
+	
+	export class StrategyConfig {
+	    PositionSize: number;
+	    TradeDirection: string;
+	    TakeProfitPercent: number;
+	    StopLossPercent: number;
+	    Interval: number;
+	    Parameters: Record<string, any>;
 	
 	    static createFrom(source: any = {}) {
-	        return new Label(source);
+	        return new StrategyConfig(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Index = source["Index"];
-	        this.Price = source["Price"];
-	        this.Text = source["Text"];
-	        this.Direction = source["Direction"];
-	        this.Percentage = source["Percentage"];
+	        this.PositionSize = source["PositionSize"];
+	        this.TradeDirection = source["TradeDirection"];
+	        this.TakeProfitPercent = source["TakeProfitPercent"];
+	        this.StopLossPercent = source["StopLossPercent"];
+	        this.Interval = source["Interval"];
+	        this.Parameters = source["Parameters"];
 	    }
+	}
+	export class MaxTrendPointsStrategy {
+	    ID: string;
+	    Symbol: string;
+	    Interval: string;
+	    LastCandleTime: number;
+	    IsRunning: boolean;
+	    Position?: Position;
+	    Factor: number;
+	    Config: StrategyConfig;
+	
+	    static createFrom(source: any = {}) {
+	        return new MaxTrendPointsStrategy(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.Symbol = source["Symbol"];
+	        this.Interval = source["Interval"];
+	        this.LastCandleTime = source["LastCandleTime"];
+	        this.IsRunning = source["IsRunning"];
+	        this.Position = this.convertValues(source["Position"], Position);
+	        this.Factor = source["Factor"];
+	        this.Config = this.convertValues(source["Config"], StrategyConfig);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class PortfolioSummary {
 	    Balance: AccountBalance;
@@ -291,118 +368,6 @@ export namespace main {
 	}
 	
 	
-	export class StrategyConfig {
-	    TakeProfitPercent: number;
-	    StopLossPercent: number;
-	    PositionSize: number;
-	    UsePercentage: boolean;
-	    MaxPositions: number;
-	    MaxRiskPerTrade: number;
-	    TradeDirection: string;
-	    Parameters: Record<string, any>;
-	
-	    static createFrom(source: any = {}) {
-	        return new StrategyConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.TakeProfitPercent = source["TakeProfitPercent"];
-	        this.StopLossPercent = source["StopLossPercent"];
-	        this.PositionSize = source["PositionSize"];
-	        this.UsePercentage = source["UsePercentage"];
-	        this.MaxPositions = source["MaxPositions"];
-	        this.MaxRiskPerTrade = source["MaxRiskPerTrade"];
-	        this.TradeDirection = source["TradeDirection"];
-	        this.Parameters = source["Parameters"];
-	    }
-	}
-	export class StrategyInstance {
-	    id: string;
-	    config: StrategyConfig;
-	    symbol: string;
-	    interval: string;
-	    isRunning: boolean;
-	    currentPosition?: Position;
-	    lastCandleTime: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new StrategyInstance(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.config = this.convertValues(source["config"], StrategyConfig);
-	        this.symbol = source["symbol"];
-	        this.interval = source["interval"];
-	        this.isRunning = source["isRunning"];
-	        this.currentPosition = this.convertValues(source["currentPosition"], Position);
-	        this.lastCandleTime = source["lastCandleTime"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class StrategyOutputV2 {
-	    TrendLines: number[];
-	    TrendColors: string[];
-	    Directions: number[];
-	    Labels: Label[];
-	    Signals: Signal[];
-	    BacktestResult: BacktestResult;
-	    StrategyName: string;
-	    StrategyVersion: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new StrategyOutputV2(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.TrendLines = source["TrendLines"];
-	        this.TrendColors = source["TrendColors"];
-	        this.Directions = source["Directions"];
-	        this.Labels = this.convertValues(source["Labels"], Label);
-	        this.Signals = this.convertValues(source["Signals"], Signal);
-	        this.BacktestResult = this.convertValues(source["BacktestResult"], BacktestResult);
-	        this.StrategyName = source["StrategyName"];
-	        this.StrategyVersion = source["StrategyVersion"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 
 }
 

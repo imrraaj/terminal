@@ -44,17 +44,7 @@ type PortfolioSummary struct {
 	Positions      []ActivePosition
 	TotalPositions int
 	TotalPnL       float64
-
-	OpenOrders []hyperliquid.OpenOrder
-}
-
-type OrderRequest struct {
-	Coin       string
-	IsBuy      bool
-	Size       float64
-	Price      float64
-	OrderType  string
-	ReduceOnly bool
+	OpenOrders     []hyperliquid.OpenOrder
 }
 
 type OrderResponse struct {
@@ -64,29 +54,27 @@ type OrderResponse struct {
 	Status  string
 }
 
-type ClosePositionRequest struct {
-	Coin string
-	Size float64
-}
+func NewAccount(ctx context.Context, config Config) *Account {
+	exchange := hyperliquid.NewExchange(ctx, config.PrivateKey, config.URL, nil, "", "", nil, hyperliquid.ExchangeOptClientOptions())
+	info := hyperliquid.NewInfo(ctx, config.URL, true, nil, nil, hyperliquid.InfoOptClientOptions())
 
-func NewAccount(ctx context.Context, walletAddress string) *Account {
 	return &Account{
-		ctx:      ctx,
-		exchange: hyperliquid.NewExchange(ctx, nil, hyperliquid.MainnetAPIURL, nil, "", "", nil),
-		address:  walletAddress,
-		info:     hyperliquid.NewInfo(ctx, hyperliquid.MainnetAPIURL, true, nil, nil),
+		ctx:        ctx,
+		exchange:   exchange,
+		address:    config.Address,
+		privateKey: config.PrivateKey,
+		info:       info,
 	}
 }
 
-func parseFloatSafe(s string) float64 {
-	f, _ := strconv.ParseFloat(s, 64)
-	return f
+func (a *Account) GetAddress() string {
+	return a.address
 }
 
-func (a *Account) GetPortfolioSummary() (*PortfolioSummary, error) {
+func (a *Account) GetPortfolioSummary() (PortfolioSummary, error) {
 	userState, err := a.info.UserState(a.ctx, a.address)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch user state: %w", err)
+		return PortfolioSummary{}, fmt.Errorf("failed to fetch user state: %w", err)
 	}
 
 	bal := AccountBalance{
@@ -105,6 +93,7 @@ func (a *Account) GetPortfolioSummary() (*PortfolioSummary, error) {
 		if sizeF == 0 {
 			continue
 		}
+
 		side := "long"
 		if sizeF < 0 {
 			side = "short"
@@ -115,12 +104,13 @@ func (a *Account) GetPortfolioSummary() (*PortfolioSummary, error) {
 		if pos.EntryPx != nil {
 			entry = *pos.EntryPx
 		}
+
 		liq := ""
 		if pos.LiquidationPx != nil {
 			liq = *pos.LiquidationPx
 		}
 
-		ap := ActivePosition{
+		positions = append(positions, ActivePosition{
 			Coin:           pos.Coin,
 			Side:           side,
 			Size:           fmt.Sprintf("%.8f", sizeF),
@@ -131,18 +121,17 @@ func (a *Account) GetPortfolioSummary() (*PortfolioSummary, error) {
 			Leverage:       pos.Leverage.Value,
 			MarginUsed:     pos.MarginUsed,
 			ReturnOnEquity: pos.ReturnOnEquity,
-		}
+		})
 
-		positions = append(positions, ap)
 		totalPnL += parseFloatSafe(pos.UnrealizedPnl)
 	}
 
 	openOrders, err := a.info.OpenOrders(a.ctx, a.address)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch open orders: %w", err)
+		return PortfolioSummary{}, fmt.Errorf("failed to fetch open orders: %w", err)
 	}
 
-	return &PortfolioSummary{
+	return PortfolioSummary{
 		Balance:        bal,
 		Positions:      positions,
 		TotalPositions: len(positions),
@@ -159,44 +148,115 @@ func (a *Account) GetActivePositions() ([]ActivePosition, error) {
 	return sum.Positions, nil
 }
 
-func (a *Account) OpenTrade(req OrderRequest) (*OrderResponse, error) {
-	if a.exchange == nil {
-		return nil, fmt.Errorf("exchange not initialized")
-	}
-
-	orderReq := hyperliquid.CreateOrderRequest{
-		Coin:       req.Coin,
-		IsBuy:      req.IsBuy,
-		Size:       req.Size,
-		Price:      req.Price,
-		ReduceOnly: req.ReduceOnly,
-	}
-
-	if req.OrderType == "market" {
-		orderReq.OrderType = hyperliquid.OrderType{
-			Trigger: &hyperliquid.TriggerOrderType{
-				TriggerPx: req.Price,
-				IsMarket:  true,
-			},
-		}
-	} else {
-		orderReq.OrderType = hyperliquid.OrderType{
-			Limit: &hyperliquid.LimitOrderType{
-				Tif: hyperliquid.TifGtc,
-			},
-		}
-	}
-
-	resp, err := a.exchange.Order(a.ctx, orderReq, nil)
+func (a *Account) OpenPosition(coin string, isBuy bool, size float64, leverage int) (OrderResponse, error) {
+	_, err := a.exchange.UpdateLeverage(a.ctx, leverage, coin, false)
 	if err != nil {
-		return &OrderResponse{
+		return OrderResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to set leverage: %v", err),
+			Status:  "error",
+		}, err
+	}
+
+	resp, err := a.exchange.MarketOpen(a.ctx, coin, isBuy, size, nil, 0.05, nil, nil)
+	if err != nil {
+		return OrderResponse{
 			Success: false,
 			Message: err.Error(),
 			Status:  "error",
 		}, err
 	}
 
-	out := &OrderResponse{Success: true}
+	return parseOrderResponse(resp), nil
+}
+
+func (a *Account) ClosePosition(coin string, size float64) (OrderResponse, error) {
+	userState, err := a.info.UserState(a.ctx, a.address)
+	if err != nil {
+		return OrderResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to fetch position: %v", err),
+			Status:  "error",
+		}, err
+	}
+
+	var positionSize float64
+	var isBuy bool
+	found := false
+
+	for _, assetPos := range userState.AssetPositions {
+		if assetPos.Position.Coin == coin {
+			szi := parseFloatSafe(assetPos.Position.Szi)
+			if szi == 0 {
+				return OrderResponse{
+					Success: false,
+					Message: "no open position for " + coin,
+					Status:  "error",
+				}, fmt.Errorf("no open position for %s", coin)
+			}
+
+			isBuy = szi < 0
+			if size > 0 {
+				positionSize = size
+			} else {
+				positionSize = abs(szi)
+			}
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return OrderResponse{
+			Success: false,
+			Message: "position not found for " + coin,
+			Status:  "error",
+		}, fmt.Errorf("position not found for %s", coin)
+	}
+
+	slippagePrice, err := a.exchange.SlippagePrice(a.ctx, coin, isBuy, 0.05, nil)
+	if err != nil {
+		return OrderResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to get slippage price: %v", err),
+			Status:  "error",
+		}, err
+	}
+
+	resp, err := a.exchange.Order(a.ctx, hyperliquid.CreateOrderRequest{
+		Coin:       coin,
+		IsBuy:      isBuy,
+		Size:       positionSize,
+		Price:      slippagePrice,
+		OrderType:  hyperliquid.OrderType{Limit: &hyperliquid.LimitOrderType{Tif: hyperliquid.TifIoc}},
+		ReduceOnly: true,
+	}, nil)
+
+	if err != nil {
+		return OrderResponse{
+			Success: false,
+			Message: err.Error(),
+			Status:  "error",
+		}, err
+	}
+
+	return parseOrderResponse(resp), nil
+}
+
+func parseFloatSafe(s string) float64 {
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func parseOrderResponse(resp hyperliquid.OrderStatus) OrderResponse {
+	out := OrderResponse{Success: true}
 	if resp.Resting != nil {
 		out.Status = resp.Resting.Status
 		out.OrderID = fmt.Sprintf("%d", resp.Resting.Oid)
@@ -208,88 +268,5 @@ func (a *Account) OpenTrade(req OrderRequest) (*OrderResponse, error) {
 		out.Status = "error"
 		out.Message = *resp.Error
 	}
-	return out, nil
-}
-
-func (a *Account) ClosePosition(req ClosePositionRequest) (*OrderResponse, error) {
-	positions, err := a.GetActivePositions()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get positions: %w", err)
-	}
-	var pos *ActivePosition
-	for i := range positions {
-		if positions[i].Coin == req.Coin {
-			pos = &positions[i]
-			break
-		}
-	}
-	if pos == nil {
-		return nil, fmt.Errorf("no open position for %s", req.Coin)
-	}
-
-	size := req.Size
-	if size == 0 {
-		size = parseFloatSafe(pos.Size)
-	}
-	isBuy := pos.Side == "short"
-
-	closeReq := OrderRequest{
-		Coin:       req.Coin,
-		IsBuy:      isBuy,
-		Size:       size,
-		Price:      0,
-		OrderType:  "market",
-		ReduceOnly: true,
-	}
-	return a.OpenTrade(closeReq)
-}
-
-func (a *Account) GetOpenOrders() ([]hyperliquid.OpenOrder, error) {
-	return a.info.OpenOrders(a.ctx, a.address)
-}
-
-func (a *Account) CancelOrder(coin string, orderId int64) error {
-	if a.exchange == nil {
-		return fmt.Errorf("exchange not initialized")
-	}
-	_, err := a.exchange.Cancel(a.ctx, coin, orderId)
-	if err != nil {
-		return fmt.Errorf("cancel failed: %w", err)
-	}
-	return nil
-}
-
-func (a *Account) CancelAllOrders(coin string) error {
-	orders, err := a.GetOpenOrders()
-	if err != nil {
-		return fmt.Errorf("failed fetch open orders: %w", err)
-	}
-	for _, o := range orders {
-		if o.Coin == coin {
-			if err := a.CancelOrder(coin, o.Oid); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (a *Account) OpenLongPosition(coin string, size float64, price float64, orderType string) (*OrderResponse, error) {
-	return a.OpenTrade(OrderRequest{
-		Coin:      coin,
-		IsBuy:     true,
-		Size:      size,
-		Price:     price,
-		OrderType: orderType,
-	})
-}
-
-func (a *Account) OpenShortPosition(coin string, size float64, price float64, orderType string) (*OrderResponse, error) {
-	return a.OpenTrade(OrderRequest{
-		Coin:      coin,
-		IsBuy:     false,
-		Size:      size,
-		Price:     price,
-		OrderType: orderType,
-	})
+	return out
 }
