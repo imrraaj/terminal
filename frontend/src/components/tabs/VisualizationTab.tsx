@@ -33,6 +33,7 @@ import { TradingStrategyManager } from "@/lib/TradingStrategyManager";
 import { useChartStore } from "@/store/chartStore";
 import { useVisualizationStore } from "@/store/visualizationStore";
 import { TIMEFRAMES, SYMBOLS } from "@/config/trading";
+import { Checkbox } from "../ui/checkbox";
 
 const strategyManager = TradingStrategyManager.getInstance();
 
@@ -255,12 +256,12 @@ export function VisualizationTab() {
     };
 
     return (
-        <div className="h-full flex flex-col p-4 gap-4 overflow-y-auto">
-            <div className="flex gap-4 flex-shrink-0">
+        <div className="h-full flex flex-col p-2 gap-2 overflow-y-auto">
+            <div className="flex gap-2 flex-shrink-0">
                 <div className="flex-1 min-w-0">
                     <Card className="h-full flex flex-col">
-                        <CardHeader className="pb-3 flex-shrink-0">
-                            <div className="flex items-center gap-4">
+                        <CardHeader className="pb-2 flex-shrink-0">
+                            <div className="flex items-center gap-2">
                                 <div className="relative">
                                     <Select
                                         value={symbol}
@@ -302,19 +303,18 @@ export function VisualizationTab() {
                                 </Select>
 
                                 <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
+                                    <Checkbox
+                                        className="shadow-xs shadow-[2px_2px_0px_rgba(0,0,0,0.25)]"
                                         id="showEntryPrices"
                                         checked={showEntryPrices}
-                                        onChange={(e) => setShowEntryPrices(e.target.checked)}
-                                        className="w-4 h-4 cursor-pointer"
+                                        onCheckedChange={(checked) => setShowEntryPrices(checked ? true : false)}
                                     />
                                     <label htmlFor="showEntryPrices" className="text-sm cursor-pointer">
                                         Show Entry Prices
                                     </label>
                                 </div>
 
-                                <Badge variant="secondary">Backtest Mode</Badge>
+                                <Badge variant="default" className="bg-green-700">Backtest Mode</Badge>
                             </div>
                         </CardHeader>
                         <CardContent className="w-full h-full overflow-hidden p-4 relative z-0">
@@ -737,32 +737,24 @@ export function VisualizationTab() {
                                                             </TableCell>
                                                             <TableCell>
                                                                 <Badge
-                                                                    variant={
+                                                                    className={
                                                                         position.Side ===
                                                                         "long"
-                                                                            ? "default"
-                                                                            : "secondary"
+                                                                            ? "bg-green-500"
+                                                                            : "bg-red-500"
                                                                     }
                                                                 >
                                                                     {position.Side.toUpperCase()}
                                                                 </Badge>
                                                             </TableCell>
-                                                            <TableCell className="font-mono">
-                                                                $
-                                                                {position.EntryPrice.toFixed(
-                                                                    2
-                                                                )}
+                                                            <TableCell className="font-semibold">
+                                                                ${position.EntryPrice.toFixed(2)}
                                                             </TableCell>
-                                                            <TableCell className="font-mono">
-                                                                $
-                                                                {position.ExitPrice.toFixed(
-                                                                    2
-                                                                )}
+                                                            <TableCell className="font-semibold">
+                                                                ${position.ExitPrice.toFixed(2)}
                                                             </TableCell>
-                                                            <TableCell className="font-mono">
-                                                                {position.Size.toFixed(
-                                                                    4
-                                                                )}
+                                                            <TableCell className="font-semibold">
+                                                                {position.Size.toFixed(4) + " " + symbol} 
                                                             </TableCell>
                                                             <TableCell
                                                                 className={`font-semibold ${

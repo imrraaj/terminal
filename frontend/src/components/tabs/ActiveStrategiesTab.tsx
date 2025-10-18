@@ -189,10 +189,10 @@ export function ActiveStrategiesTab() {
                                 <div className="flex flex-col gap-2">
                                     <div className="flex items-center gap-3">
                                         <CardTitle className="text-lg">{strategy.Strategy?.name || strategy.ID}</CardTitle>
-                                        <Badge variant={strategy.IsRunning ? 'default' : 'secondary'}>
+                                        <Badge variant={strategy.IsRunning ? 'default' : 'secondary'} className={strategy.IsRunning ? 'bg-green-700' : 'bg-gray-500'}>
                                             {strategy.IsRunning ? 'running' : 'stopped'}
                                         </Badge>
-                                        <span className="text-sm text-muted-foreground">
+                                        <span className="text-sm text-muted-foreground font-bold">
                                             {strategy.Symbol}/USD · {strategy.Interval}
                                         </span>
                                     </div>
@@ -221,7 +221,7 @@ export function ActiveStrategiesTab() {
                                 <div className="flex gap-2">
                                     {strategy.IsRunning && !strategy.Position?.IsOpen && (
                                         <>
-                                            <Button variant="destructive" size="sm" onClick={() => handleStopStrategy(strategy.ID)}>
+                                            <Button variant="destructive" className="bg-red-700 hover:bg-red-800" size="sm" onClick={() => handleStopStrategy(strategy.ID)}>
                                                 Stop
                                             </Button>
                                         </>

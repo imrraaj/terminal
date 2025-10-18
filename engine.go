@@ -9,12 +9,14 @@ import (
 type StrategyEngine struct {
 	strategies map[string]*MaxTrendPointsStrategy
 	source     Source
+	db         *Database
 }
 
-func NewStrategyEngine(source *Source) *StrategyEngine {
+func NewStrategyEngine(source *Source, db *Database) *StrategyEngine {
 	return &StrategyEngine{
 		strategies: make(map[string]*MaxTrendPointsStrategy),
 		source:     *source,
+		db:         db,
 	}
 }
 
@@ -29,6 +31,13 @@ func (e *StrategyEngine) StartStrategy(id string, strategy MaxTrendPointsStrateg
 	strategy.ID = id
 	strategy.IsRunning = true
 	e.strategies[id] = &strategy
+
+	if e.db != nil {
+		if err := e.db.SaveStrategy(&strategy); err != nil {
+			fmt.Printf("Failed to save strategy to database: %v\n", err)
+		}
+	}
+
 	go e.run(&strategy)
 	return nil
 }
@@ -44,6 +53,12 @@ func (e *StrategyEngine) StopStrategy(name string) error {
 
 	if live.Position != nil && live.Position.IsOpen {
 		live.ClosePosition("Strategy Stopped")
+	}
+
+	if e.db != nil {
+		if err := e.db.DeleteStrategy(name); err != nil {
+			fmt.Printf("Failed to delete strategy from database: %v\n", err)
+		}
 	}
 
 	delete(e.strategies, name)
@@ -158,6 +173,40 @@ func (e *StrategyEngine) processCandle(strategy *MaxTrendPointsStrategy) error {
 				fmt.Printf("[%s] 📉 Trend continuing: SHORT (orange)\n", strategy.ID)
 			}
 		}
+	}
+
+	if e.db != nil {
+		if err := e.db.SaveStrategy(strategy); err != nil {
+			fmt.Printf("[%s] Failed to save strategy state: %v\n", strategy.ID, err)
+		}
+	}
+
+	return nil
+}
+
+func (e *StrategyEngine) RestoreStrategies(account *Account) error {
+	if e.db == nil {
+		return nil
+	}
+
+	strategies, err := e.db.LoadStrategies()
+	if err != nil {
+		return fmt.Errorf("failed to load strategies: %w", err)
+	}
+
+	for _, strategy := range strategies {
+		strategy.account = account
+		ctx, cancel := context.WithCancel(context.Background())
+		strategy.ctx = ctx
+		strategy.cancel = cancel
+
+		e.strategies[strategy.ID] = strategy
+		fmt.Printf("✅ Restored strategy: %s (%s %s)\n", strategy.ID, strategy.Symbol, strategy.Interval)
+		go e.run(strategy)
+	}
+
+	if len(strategies) > 0 {
+		fmt.Printf("📊 Restored %d running strategies\n", len(strategies))
 	}
 
 	return nil

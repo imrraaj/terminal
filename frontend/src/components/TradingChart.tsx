@@ -92,8 +92,9 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
 
     const chart = createChart(chartRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: "#181818" },
-        textColor: "white",
+        // background: { type: ColorType.Solid, color: "#181818" },
+        // textColor: "white",
+        fontFamily: "Archivo Narrow, ui-sans-serif, sans-serif, system-ui",
       },
       width: chartRef.current.clientWidth,
       height: chartRef.current.clientHeight,
@@ -143,22 +144,22 @@ export const TradingChart = ({ intervalSeconds }: TradingChartProps) => {
       grid: {
         vertLines: {
           color: "#ffffff11",
-          // visible: false,
+          visible: false,
         },
         horzLines: {
           color: "#ffffff11",
-          // visible: false,
+          visible: false,
         },
       },
     });
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#089981cc",
-      downColor: "#ffffffcc",
-      wickUpColor: "#089981",
-      wickDownColor: "#ffffff99",
-      borderUpColor: "#089981",
-      borderDownColor: "#ffffff99",
+      // upColor: "#089981cc",
+      // downColor: "#ffffffcc",
+      // wickUpColor: "#089981",
+      // wickDownColor: "#ffffff99",
+      // borderUpColor: "#089981",
+      // borderDownColor: "#ffffff99",
       baseLineVisible: false,
       borderVisible: false,
       priceLineVisible: true,
