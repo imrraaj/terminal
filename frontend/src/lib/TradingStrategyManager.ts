@@ -1,4 +1,4 @@
-import { FetchCandles, StrategyBacktest, StrategyRun, StopLiveStrategy, GetRunningStrategies } from '@/../wailsjs/go/main/App';
+import { FetchCandles, StrategyBacktest, StrategyRun, StopLiveStrategy, GetRunningStrategies, CloseStrategyPosition } from '@/../wailsjs/go/main/App';
 import { main } from '@/../wailsjs/go/models';
 import { useChartStore } from '@/store/chartStore';
 
@@ -162,6 +162,10 @@ export class TradingStrategyManager {
 
     async stopLiveStrategy(id: string): Promise<void> {
         return StopLiveStrategy(id);
+    }
+
+    async closePosition(id: string): Promise<void> {
+        return CloseStrategyPosition(id);
     }
 
     async getRunningStrategies(): Promise<any[]> {

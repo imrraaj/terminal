@@ -3,6 +3,8 @@
 import {hyperliquid} from '../models';
 import {main} from '../models';
 
+export function CloseStrategyPosition(arg1:string):Promise<void>;
+
 export function FetchCandles(arg1:string,arg2:string,arg3:number):Promise<hyperliquid.Candles>;
 
 export function FetchCandlesBefore(arg1:string,arg2:string,arg3:number,arg4:number):Promise<hyperliquid.Candles>;

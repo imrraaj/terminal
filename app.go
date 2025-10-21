@@ -84,6 +84,10 @@ func (a *App) StopLiveStrategy(name string) error {
 	return a.engine.StopStrategy(name)
 }
 
+func (a *App) CloseStrategyPosition(id string) error {
+	return a.engine.ClosePosition(id)
+}
+
 func (a *App) GetRunningStrategies() []MaxTrendPointsStrategy {
 	return a.engine.GetRunningStrategies()
 }

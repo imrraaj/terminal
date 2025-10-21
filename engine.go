@@ -65,6 +65,20 @@ func (e *StrategyEngine) StopStrategy(name string) error {
 	return nil
 }
 
+func (e *StrategyEngine) ClosePosition(id string) error {
+	strategy, exists := e.strategies[id]
+	if !exists {
+		return fmt.Errorf("strategy %s not found", id)
+	}
+
+	if strategy.Position != nil && strategy.Position.IsOpen {
+		strategy.ClosePosition("Manual Close")
+		return nil
+	}
+
+	return fmt.Errorf("no open position for strategy %s", id)
+}
+
 func (e *StrategyEngine) GetRunningStrategies() []MaxTrendPointsStrategy {
 	result := make([]MaxTrendPointsStrategy, 0, len(e.strategies))
 	for _, live := range e.strategies {
@@ -135,45 +149,32 @@ func (e *StrategyEngine) processCandle(strategy *MaxTrendPointsStrategy) error {
 	if err != nil {
 		return err
 	}
-
-	if len(signals) == 0 {
-		if len(strategy.output.Directions) > 0 {
-			lastDir := strategy.output.Directions[len(strategy.output.Directions)-1]
-			if lastDir == -1 {
-				fmt.Printf("[%s] 📈 Trend continuing: LONG (cyan)\n", strategy.ID)
+	fmt.Println(signals)
+	if len(signals) >= 2 {
+		lastDir := signals[len(signals)-1]
+		prevDir := signals[len(signals)-2]
+		if lastDir.Type != prevDir.Type {
+			// Trend changed - create signal and handle it
+			var signalType SignalType
+			if lastDir.Type == SignalShort {
+				signalType = SignalShort
+				fmt.Printf("[%s] 🔴 SHORT SIGNAL DETECTED - Trend changed to SHORT (cyan line)\n", strategy.ID)
 			} else {
-				fmt.Printf("[%s] 📉 Trend continuing: SHORT (orange)\n", strategy.ID)
+				signalType = SignalLong
+				fmt.Printf("[%s] 🟢 LONG SIGNAL DETECTED - Trend changed to LONG (orange line)\n", strategy.ID)
 			}
+
+			signal := Signal{
+				Index:  len(candles) - 1,
+				Type:   signalType,
+				Price:  parseFloat(latest.Close),
+				Time:   latest.Timestamp,
+				Reason: "Trend Reversal",
+			}
+			strategy.HandleSignal(signal, latest)
 		}
-		return nil
 	}
 
-	lastSignal := signals[len(signals)-1]
-	lastIdx := len(candles) - 1
-
-	if lastSignal.Index == lastIdx {
-		if lastSignal.Type == SignalLong {
-			fmt.Printf("[%s] 🟢 LONG SIGNAL DETECTED at %.2f - Trend changed to LONG (cyan line)\n",
-				strategy.ID, lastSignal.Price)
-		} else if lastSignal.Type == SignalShort {
-			fmt.Printf("[%s] 🔴 SHORT SIGNAL DETECTED at %.2f - Trend changed to SHORT (orange line)\n",
-				strategy.ID, lastSignal.Price)
-		}
-        // Close the position as the trend have changed
-        if strategy.Position != nil && strategy.Position.IsOpen {
-            strategy.ClosePosition("Trend Reversal")
-        }
-		strategy.HandleSignal(lastSignal, latest)
-	} else {
-		if len(strategy.output.Directions) > 0 {
-			lastDir := strategy.output.Directions[len(strategy.output.Directions)-1]
-			if lastDir == -1 {
-				fmt.Printf("[%s] 📈 Trend continuing: LONG (cyan)\n", strategy.ID)
-			} else {
-				fmt.Printf("[%s] 📉 Trend continuing: SHORT (orange)\n", strategy.ID)
-			}
-		}
-	}
 
 	if e.db != nil {
 		if err := e.db.SaveStrategy(strategy); err != nil {

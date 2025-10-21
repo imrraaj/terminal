@@ -10,7 +10,7 @@ function App() {
                 <div className="border-b bg-card px-6 py-3">
                     <div className="flex items-center justify-between">
                         <h1 className="text-xl font-bold tracking-tight">HyperTerminal</h1>
-                        <TabsList>
+                        <TabsList className="flex space-x-2 bg-none">
                             <TabsTrigger value="visualization">Visualization</TabsTrigger>
                             <TabsTrigger value="active-strategies">Active Strategies</TabsTrigger>
                             <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
