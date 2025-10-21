@@ -39,7 +39,7 @@ func (s *MaxTrendPointsStrategy) GetName() string {
 
 func (s *MaxTrendPointsStrategy) BuildConfig(params map[string]any) StrategyConfig {
 	config := StrategyConfig{
-		PositionSize:      0.005,
+		PositionSize:      0.01,
 		TradeDirection:    "both",
 		TakeProfitPercent: 5.0,
 		StopLossPercent:   2.0,
@@ -166,7 +166,7 @@ func (s *MaxTrendPointsStrategy) HandleSignal(signal Signal, candle hyperliquid.
 	}
 
 	fmt.Printf("[%s] 🚀 Opening %s position: size=%.4f, leverage=10x\n", s.ID, side, s.Config.PositionSize)
-	resp, err := s.account.OpenPosition(s.Symbol, isBuy, s.Config.PositionSize, 10)
+	resp, err := s.account.OpenPosition(s.Symbol, isBuy, s.Config.PositionSize, 20)
 	if err != nil {
 		fmt.Printf("[%s] ❌ Failed to open position: %v\n", s.ID, err)
 		return

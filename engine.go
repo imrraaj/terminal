@@ -9,12 +9,14 @@ import (
 type StrategyEngine struct {
 	strategies map[string]*MaxTrendPointsStrategy
 	source     Source
+	db         *Database
 }
 
-func NewStrategyEngine(source *Source) *StrategyEngine {
+func NewStrategyEngine(source *Source, db *Database) *StrategyEngine {
 	return &StrategyEngine{
 		strategies: make(map[string]*MaxTrendPointsStrategy),
 		source:     *source,
+		db:         db,
 	}
 }
 
@@ -29,6 +31,13 @@ func (e *StrategyEngine) StartStrategy(id string, strategy MaxTrendPointsStrateg
 	strategy.ID = id
 	strategy.IsRunning = true
 	e.strategies[id] = &strategy
+
+	if e.db != nil {
+		if err := e.db.SaveStrategy(&strategy); err != nil {
+			fmt.Printf("Failed to save strategy to database: %v\n", err)
+		}
+	}
+
 	go e.run(&strategy)
 	return nil
 }
@@ -46,8 +55,28 @@ func (e *StrategyEngine) StopStrategy(name string) error {
 		live.ClosePosition("Strategy Stopped")
 	}
 
+	if e.db != nil {
+		if err := e.db.DeleteStrategy(name); err != nil {
+			fmt.Printf("Failed to delete strategy from database: %v\n", err)
+		}
+	}
+
 	delete(e.strategies, name)
 	return nil
+}
+
+func (e *StrategyEngine) ClosePosition(id string) error {
+	strategy, exists := e.strategies[id]
+	if !exists {
+		return fmt.Errorf("strategy %s not found", id)
+	}
+
+	if strategy.Position != nil && strategy.Position.IsOpen {
+		strategy.ClosePosition("Manual Close")
+		return nil
+	}
+
+	return fmt.Errorf("no open position for strategy %s", id)
 }
 
 func (e *StrategyEngine) GetRunningStrategies() []MaxTrendPointsStrategy {
@@ -120,44 +149,65 @@ func (e *StrategyEngine) processCandle(strategy *MaxTrendPointsStrategy) error {
 	if err != nil {
 		return err
 	}
-
-	if len(signals) == 0 {
-		if len(strategy.output.Directions) > 0 {
-			lastDir := strategy.output.Directions[len(strategy.output.Directions)-1]
-			if lastDir == -1 {
-				fmt.Printf("[%s] 📈 Trend continuing: LONG (cyan)\n", strategy.ID)
+	fmt.Println(signals)
+	if len(signals) >= 2 {
+		lastDir := signals[len(signals)-1]
+		prevDir := signals[len(signals)-2]
+		if lastDir.Type != prevDir.Type {
+			// Trend changed - create signal and handle it
+			var signalType SignalType
+			if lastDir.Type == SignalShort {
+				signalType = SignalShort
+				fmt.Printf("[%s] 🔴 SHORT SIGNAL DETECTED - Trend changed to SHORT (cyan line)\n", strategy.ID)
 			} else {
-				fmt.Printf("[%s] 📉 Trend continuing: SHORT (orange)\n", strategy.ID)
+				signalType = SignalLong
+				fmt.Printf("[%s] 🟢 LONG SIGNAL DETECTED - Trend changed to LONG (orange line)\n", strategy.ID)
 			}
+
+			signal := Signal{
+				Index:  len(candles) - 1,
+				Type:   signalType,
+				Price:  parseFloat(latest.Close),
+				Time:   latest.Timestamp,
+				Reason: "Trend Reversal",
+			}
+			strategy.HandleSignal(signal, latest)
 		}
+	}
+
+
+	if e.db != nil {
+		if err := e.db.SaveStrategy(strategy); err != nil {
+			fmt.Printf("[%s] Failed to save strategy state: %v\n", strategy.ID, err)
+		}
+	}
+
+	return nil
+}
+
+func (e *StrategyEngine) RestoreStrategies(account *Account) error {
+	if e.db == nil {
 		return nil
 	}
 
-	lastSignal := signals[len(signals)-1]
-	lastIdx := len(candles) - 1
+	strategies, err := e.db.LoadStrategies()
+	if err != nil {
+		return fmt.Errorf("failed to load strategies: %w", err)
+	}
 
-	if lastSignal.Index == lastIdx {
-		if lastSignal.Type == SignalLong {
-			fmt.Printf("[%s] 🟢 LONG SIGNAL DETECTED at %.2f - Trend changed to LONG (cyan line)\n",
-				strategy.ID, lastSignal.Price)
-		} else if lastSignal.Type == SignalShort {
-			fmt.Printf("[%s] 🔴 SHORT SIGNAL DETECTED at %.2f - Trend changed to SHORT (orange line)\n",
-				strategy.ID, lastSignal.Price)
-		}
-        // Close the position as the trend have changed
-        if strategy.Position != nil && strategy.Position.IsOpen {
-            strategy.ClosePosition("Trend Reversal")
-        }
-		strategy.HandleSignal(lastSignal, latest)
-	} else {
-		if len(strategy.output.Directions) > 0 {
-			lastDir := strategy.output.Directions[len(strategy.output.Directions)-1]
-			if lastDir == -1 {
-				fmt.Printf("[%s] 📈 Trend continuing: LONG (cyan)\n", strategy.ID)
-			} else {
-				fmt.Printf("[%s] 📉 Trend continuing: SHORT (orange)\n", strategy.ID)
-			}
-		}
+	for _, strategy := range strategies {
+		strategy.account = account
+		ctx, cancel := context.WithCancel(context.Background())
+		strategy.ctx = ctx
+		strategy.cancel = cancel
+
+		e.strategies[strategy.ID] = strategy
+		fmt.Printf("✅ Restored strategy: %s (%s %s)\n", strategy.ID, strategy.Symbol, strategy.Interval)
+		go e.run(strategy)
+	}
+
+	if len(strategies) > 0 {
+		fmt.Printf("📊 Restored %d running strategies\n", len(strategies))
 	}
 
 	return nil

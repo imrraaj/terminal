@@ -119,14 +119,16 @@ export function ActiveStrategiesTab() {
         return () => clearInterval(interval);
     }, []);
 
-    const handleClosePosition = async (strategyId: string, positionId: string) => {
-        console.log('Close position:', strategyId, positionId);
-        // TODO: Implement position closing
-    };
-
-    const handlePauseStrategy = async (id: string) => {
-        console.log('Pause strategy:', id);
-        // TODO: Implement pause
+    const handleClosePosition = async (strategyId: string) => {
+        try {
+            await strategyManager.closePosition(strategyId);
+            // Refresh strategies list
+            const running = await strategyManager.getRunningStrategies();
+            setStrategies(running || []);
+        } catch (error) {
+            console.error('Failed to close position:', error);
+            alert(`Failed to close position: ${error}`);
+        }
     };
 
     const handleStopStrategy = async (id: string) => {
@@ -189,10 +191,10 @@ export function ActiveStrategiesTab() {
                                 <div className="flex flex-col gap-2">
                                     <div className="flex items-center gap-3">
                                         <CardTitle className="text-lg">{strategy.Strategy?.name || strategy.ID}</CardTitle>
-                                        <Badge variant={strategy.IsRunning ? 'default' : 'secondary'}>
+                                        <Badge variant={strategy.IsRunning ? 'default' : 'secondary'} className={strategy.IsRunning ? 'bg-green-700' : 'bg-gray-500'}>
                                             {strategy.IsRunning ? 'running' : 'stopped'}
                                         </Badge>
-                                        <span className="text-sm text-muted-foreground">
+                                        <span className="text-sm text-muted-foreground font-bold">
                                             {strategy.Symbol}/USD · {strategy.Interval}
                                         </span>
                                     </div>
@@ -219,10 +221,15 @@ export function ActiveStrategiesTab() {
                                     )}
                                 </div>
                                 <div className="flex gap-2">
-                                    {strategy.IsRunning && !strategy.Position?.IsOpen && (
+                                    {strategy.IsRunning && (
                                         <>
-                                            <Button variant="destructive" size="sm" onClick={() => handleStopStrategy(strategy.ID)}>
-                                                Stop
+                                            {strategy.Position?.IsOpen && (
+                                                <Button variant="outline" className="border-orange-600 text-orange-600 hover:bg-orange-600 hover:text-white" size="sm" onClick={() => handleClosePosition(strategy.ID)}>
+                                                    Close Position
+                                                </Button>
+                                            )}
+                                            <Button variant="destructive" className="bg-red-700 hover:bg-red-800" size="sm" onClick={() => handleStopStrategy(strategy.ID)}>
+                                                Stop Strategy
                                             </Button>
                                         </>
                                     )}

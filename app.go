@@ -11,6 +11,7 @@ import (
 type App struct {
 	ctx     context.Context
 	rdb     *redis.Client
+	db      *Database
 	source  *Source
 	account *Account
 	engine  *StrategyEngine
@@ -19,11 +20,17 @@ type App struct {
 
 func NewApp() *App {
 	config := NewConfig()
+	db, err := NewDatabase("./data/strategies.db")
+	if err != nil {
+		log.Printf("Failed to open database: %v", err)
+	}
+
 	return &App{
 		source: NewSource(config),
 		rdb: redis.NewClient(&redis.Options{
 			Addr: config.RedisURL,
 		}),
+		db:     db,
 		config: config,
 	}
 }
@@ -33,11 +40,18 @@ func (a *App) startup(ctx context.Context) {
 	a.source.SetContext(ctx)
 	a.source.SetRedis(a.rdb)
 	a.account = NewAccount(ctx, a.config)
-	a.engine = NewStrategyEngine(a.source)
+	a.engine = NewStrategyEngine(a.source, a.db)
+
+	if err := a.engine.RestoreStrategies(a.account); err != nil {
+		log.Printf("Failed to restore strategies: %v", err)
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
 	a.engine.StopAllStrategies()
+	if a.db != nil {
+		a.db.Close()
+	}
 }
 
 func (a *App) FetchCandles(symbol string, interval string, limit int) (hyperliquid.Candles, error) {
@@ -68,6 +82,10 @@ func (a *App) StrategyBacktest(symbol string, interval string, limit int, params
 
 func (a *App) StopLiveStrategy(name string) error {
 	return a.engine.StopStrategy(name)
+}
+
+func (a *App) CloseStrategyPosition(id string) error {
+	return a.engine.ClosePosition(id)
 }
 
 func (a *App) GetRunningStrategies() []MaxTrendPointsStrategy {

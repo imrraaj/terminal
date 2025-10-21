@@ -33,6 +33,7 @@ import { TradingStrategyManager } from "@/lib/TradingStrategyManager";
 import { useChartStore } from "@/store/chartStore";
 import { useVisualizationStore } from "@/store/visualizationStore";
 import { TIMEFRAMES, SYMBOLS } from "@/config/trading";
+import { Checkbox } from "../ui/checkbox";
 
 const strategyManager = TradingStrategyManager.getInstance();
 
@@ -255,12 +256,12 @@ export function VisualizationTab() {
     };
 
     return (
-        <div className="h-full flex flex-col p-4 gap-4 overflow-y-auto">
-            <div className="flex gap-4 flex-shrink-0">
+        <div className="h-full flex flex-col p-2 gap-2 overflow-y-auto">
+            <div className="flex gap-2 flex-shrink-0">
                 <div className="flex-1 min-w-0">
                     <Card className="h-full flex flex-col">
-                        <CardHeader className="pb-3 flex-shrink-0">
-                            <div className="flex items-center gap-4">
+                        <CardHeader className="pb-2 flex-shrink-0">
+                            <div className="flex items-center gap-2">
                                 <div className="relative">
                                     <Select
                                         value={symbol}
@@ -302,19 +303,18 @@ export function VisualizationTab() {
                                 </Select>
 
                                 <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
+                                    <Checkbox
+                                        className="shadow-xs shadow-[2px_2px_0px_rgba(0,0,0,0.25)]"
                                         id="showEntryPrices"
                                         checked={showEntryPrices}
-                                        onChange={(e) => setShowEntryPrices(e.target.checked)}
-                                        className="w-4 h-4 cursor-pointer"
+                                        onCheckedChange={(checked) => setShowEntryPrices(checked ? true : false)}
                                     />
                                     <label htmlFor="showEntryPrices" className="text-sm cursor-pointer">
                                         Show Entry Prices
                                     </label>
                                 </div>
 
-                                <Badge variant="secondary">Backtest Mode</Badge>
+                                <Badge variant="default" className="bg-green-700">Backtest Mode</Badge>
                             </div>
                         </CardHeader>
                         <CardContent className="w-full h-full overflow-hidden p-4 relative z-0">
@@ -324,151 +324,148 @@ export function VisualizationTab() {
                         </CardContent>
                     </Card>
                 </div>
+                <Card className="w-1/5 flex-shrink-0 flex flex-col gap-4 overflow-y-auto">
+                    <CardHeader>
+                        <CardTitle className="text-lg">
+                            Strategy Configuration
+                        </CardTitle>
+                        <CardDescription>
+                            Configure backtest parameters
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="viz-strategy">Strategy</Label>
+                            <Select
+                                value={selectedStrategy.id}
+                                onValueChange={handleStrategyChange}
+                            >
+                                <SelectTrigger id="viz-strategy">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {STRATEGIES.map((strategy) => (
+                                        <SelectItem
+                                            key={strategy.id}
+                                            value={strategy.id}
+                                        >
+                                            {strategy.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                {selectedStrategy.description}
+                            </p>
+                        </div>
 
-                <div className="w-80 flex-shrink-0 flex flex-col gap-4 overflow-y-auto">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-lg">
-                                Strategy Configuration
-                            </CardTitle>
-                            <CardDescription>
-                                Configure backtest parameters
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
+                        <Separator />
+
+                        {selectedStrategy.parameters.map(renderParameter)}
+
+                        <Separator />
+
+                        <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label htmlFor="viz-strategy">Strategy</Label>
+                                <Label htmlFor="tradeDirection">
+                                    Trade Direction
+                                </Label>
                                 <Select
-                                    value={selectedStrategy.id}
-                                    onValueChange={handleStrategyChange}
+                                    value={tradeDirection}
+                                    onValueChange={(value) =>
+                                        setTradeDirection(
+                                            value as
+                                                | "both"
+                                                | "long"
+                                                | "short"
+                                        )
+                                    }
                                 >
-                                    <SelectTrigger id="viz-strategy">
+                                    <SelectTrigger id="tradeDirection">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {STRATEGIES.map((strategy) => (
-                                            <SelectItem
-                                                key={strategy.id}
-                                                value={strategy.id}
-                                            >
-                                                {strategy.name}
-                                            </SelectItem>
-                                        ))}
+                                        <SelectItem value="both">
+                                            Both (Long & Short)
+                                        </SelectItem>
+                                        <SelectItem value="long">
+                                            Long Only
+                                        </SelectItem>
+                                        <SelectItem value="short">
+                                            Short Only
+                                        </SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    {selectedStrategy.description}
+                                    Filter which trade directions to execute
                                 </p>
                             </div>
 
-                            <Separator />
-
-                            {selectedStrategy.parameters.map(renderParameter)}
-
-                            <Separator />
-
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="tradeDirection">
-                                        Trade Direction
-                                    </Label>
-                                    <Select
-                                        value={tradeDirection}
-                                        onValueChange={(value) =>
-                                            setTradeDirection(
-                                                value as
-                                                    | "both"
-                                                    | "long"
-                                                    | "short"
-                                            )
-                                        }
-                                    >
-                                        <SelectTrigger id="tradeDirection">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="both">
-                                                Both (Long & Short)
-                                            </SelectItem>
-                                            <SelectItem value="long">
-                                                Long Only
-                                            </SelectItem>
-                                            <SelectItem value="short">
-                                                Short Only
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">
-                                        Filter which trade directions to execute
-                                    </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="takeProfit">
-                                        Take Profit (%)
-                                    </Label>
-                                    <Input
-                                        id="takeProfit"
-                                        type="number"
-                                        step="0.1"
-                                        min="0.1"
-                                        max="100"
-                                        value={takeProfitPercent}
-                                        onChange={(e) =>
-                                            setTakeProfitPercent(
-                                                parseFloat(e.target.value)
-                                            )
-                                        }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Close position when profit reaches this
-                                        percentage
-                                    </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="stopLoss">
-                                        Stop Loss (%)
-                                    </Label>
-                                    <Input
-                                        id="stopLoss"
-                                        type="number"
-                                        step="0.1"
-                                        min="0.1"
-                                        max="100"
-                                        value={stopLossPercent}
-                                        onChange={(e) =>
-                                            setStopLossPercent(
-                                                parseFloat(e.target.value)
-                                            )
-                                        }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Close position when loss reaches this
-                                        percentage
-                                    </p>
-                                </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="takeProfit">
+                                    Take Profit (%)
+                                </Label>
+                                <Input
+                                    id="takeProfit"
+                                    type="number"
+                                    step="0.1"
+                                    min="0.1"
+                                    max="100"
+                                    value={takeProfitPercent}
+                                    onChange={(e) =>
+                                        setTakeProfitPercent(
+                                            parseFloat(e.target.value)
+                                        )
+                                    }
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Close position when profit reaches this
+                                    percentage
+                                </p>
                             </div>
 
-                            <div className="flex gap-2">
-                                <Button
-                                    className="flex-1"
-                                    variant="outline"
-                                    onClick={handleApplyStrategy}
-                                >
-                                    Apply Strategy
-                                </Button>
-                                <Button
-                                    className="flex-1"
-                                    onClick={handleStartStrategy}
-                                    disabled={!strategyApplied}
-                                >
-                                    Start
-                                </Button>
+                            <div className="space-y-2">
+                                <Label htmlFor="stopLoss">
+                                    Stop Loss (%)
+                                </Label>
+                                <Input
+                                    id="stopLoss"
+                                    type="number"
+                                    step="0.1"
+                                    min="0.1"
+                                    max="100"
+                                    value={stopLossPercent}
+                                    onChange={(e) =>
+                                        setStopLossPercent(
+                                            parseFloat(e.target.value)
+                                        )
+                                    }
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Close position when loss reaches this
+                                    percentage
+                                </p>
                             </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <Button
+                                className="flex-1"
+                                variant="outline"
+                                onClick={handleApplyStrategy}
+                            >
+                                Apply Strategy
+                            </Button>
+                            <Button
+                                className="flex-1"
+                                variant="outline"
+                                onClick={handleStartStrategy}
+                            >
+                                Start
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             {/* Backtest Results and Trades Table - Always visible */}
@@ -737,32 +734,24 @@ export function VisualizationTab() {
                                                             </TableCell>
                                                             <TableCell>
                                                                 <Badge
-                                                                    variant={
+                                                                    className={
                                                                         position.Side ===
                                                                         "long"
-                                                                            ? "default"
-                                                                            : "secondary"
+                                                                            ? "bg-green-500"
+                                                                            : "bg-red-500"
                                                                     }
                                                                 >
                                                                     {position.Side.toUpperCase()}
                                                                 </Badge>
                                                             </TableCell>
-                                                            <TableCell className="font-mono">
-                                                                $
-                                                                {position.EntryPrice.toFixed(
-                                                                    2
-                                                                )}
+                                                            <TableCell className="font-semibold">
+                                                                ${position.EntryPrice.toFixed(2)}
                                                             </TableCell>
-                                                            <TableCell className="font-mono">
-                                                                $
-                                                                {position.ExitPrice.toFixed(
-                                                                    2
-                                                                )}
+                                                            <TableCell className="font-semibold">
+                                                                ${position.ExitPrice.toFixed(2)}
                                                             </TableCell>
-                                                            <TableCell className="font-mono">
-                                                                {position.Size.toFixed(
-                                                                    4
-                                                                )}
+                                                            <TableCell className="font-semibold">
+                                                                {position.Size.toFixed(4) + " " + symbol} 
                                                             </TableCell>
                                                             <TableCell
                                                                 className={`font-semibold ${
